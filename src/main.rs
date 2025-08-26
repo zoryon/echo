@@ -3,6 +3,7 @@ mod routes;
 mod handlers;
 mod db;
 mod schema;
+mod token_utils;
 
 use actix_web::{web, App, HttpRequest, HttpServer, Responder};
 use diesel::r2d2::{self, ConnectionManager};
@@ -26,9 +27,16 @@ async fn main() -> std::io::Result<()> {
         .build(manager)
         .expect("Failed to create DB pool");
 
+    let jwt_secret = std::env::var("JWT_SECRET")
+        .expect("JWT_SECRET must be set in .env")
+        .into_bytes();
+
+     let secret_data = web::Data::new(jwt_secret);
+
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))
+            .app_data(secret_data.clone())
             .service(index)
             .configure(routes::configure)
     })

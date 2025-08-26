@@ -14,3 +14,4 @@ diesel = { version = "2.2.0", features = ["mysql", "r2d2", "chrono"] }
 rand = "0.8"
 hex = "0.4"
 bcrypt = "0.17.1"
+jsonwebtoken = "9.3.1"

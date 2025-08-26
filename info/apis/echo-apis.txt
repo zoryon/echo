@@ -1,5 +1,6 @@
 # # # USERS # # #
-PATCH  /api/users/{user_id}                                                 # (Optional) Partially update a user's profile
+POST   /api/users                                                           # Create a new user (admin only)
+PATCH  /api/users/{user_id}                                                 # Partially update a user's profile
 
 
 # # # SESSIONS (Authentication) # # #

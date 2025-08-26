@@ -1,8 +1,6 @@
 use actix_web::{web, HttpResponse, Responder, HttpRequest, ResponseError};
 use diesel::prelude::*;
 use chrono::{Utc, Duration};
-use rand::rngs::OsRng;
-use rand::RngCore;
 use uuid::Uuid;
 use bcrypt::verify;
 
@@ -12,16 +10,13 @@ use crate::models::user_models::User;
 use crate::schema::sessions::dsl::*;
 use crate::models::session_models::{CreateSession, Session, SessionResponse, NewSession};
 use crate::schema::users;
-
-fn generate_token() -> String {
-    let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
-    hex::encode(bytes)
-}
+use crate::token_utils::generate_jwt;
+use crate::token_utils::verify_jwt;
 
 pub async fn create_session(
     pool: web::Data<DbPool>,
     payload: web::Json<CreateSession>,
+    secret: web::Data<Vec<u8>>
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
@@ -47,7 +42,7 @@ pub async fn create_session(
     }
 
     // Create new session
-    let token_str = generate_token();
+    let token_str = generate_jwt(&payload.user_id, &secret);
     let expiration = Utc::now() + Duration::hours(720); // 30 days
 
     let new_session = NewSession {
@@ -72,14 +67,26 @@ pub async fn create_session(
 
 
 // Get current session info
-pub async fn get_current_session(req: HttpRequest, pool: web::Data<DbPool>) -> impl Responder {
-    // Assume token comes from "Authorization: Bearer <token>" header
+pub async fn get_current_session(
+    req: HttpRequest, 
+    pool: web::Data<DbPool>,
+    secret: web::Data<Vec<u8>>
+) -> impl Responder {
     let auth_header = match req.headers().get("Authorization") {
         Some(h) => h.to_str().unwrap_or(""),
         None => return HttpResponse::Unauthorized().body("Missing token"),
     };
-
     let token_value = auth_header.strip_prefix("Bearer ").unwrap_or("");
+
+    // Verify JWT signature first
+    let claims = match verify_jwt(token_value, &secret) {
+        Some(c) => c,
+        None => return HttpResponse::Unauthorized().body("Invalid token"),
+    };
+
+    if claims.exp < Utc::now().timestamp() || claims.sub.is_empty(){
+        return HttpResponse::Unauthorized().body("Token expired");
+    }
 
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
@@ -103,7 +110,6 @@ pub async fn delete_current_session(req: HttpRequest, pool: web::Data<DbPool>) -
         Some(h) => h.to_str().unwrap_or(""),
         None => return HttpResponse::Unauthorized().body("Missing token"),
     };
-
     let token_value = auth_header.strip_prefix("Bearer ").unwrap_or("");
 
     let mut conn = match get_conn(&pool) {
