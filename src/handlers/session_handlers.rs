@@ -4,11 +4,14 @@ use chrono::{Utc, Duration};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use uuid::Uuid;
+use bcrypt::verify;
 
 use crate::db::DbPool;
 use crate::db::get_conn;
+use crate::models::user_models::User;
 use crate::schema::sessions::dsl::*;
 use crate::models::session_models::{CreateSession, Session, SessionResponse, NewSession};
+use crate::schema::users;
 
 fn generate_token() -> String {
     let mut bytes = [0u8; 32];
@@ -25,6 +28,25 @@ pub async fn create_session(
         Err(e) => return e.error_response(),
     };
 
+    let user_result: QueryResult<User> = users::table
+        .filter(users::id.eq(&payload.user_id))
+        .select(User::as_select()) 
+        .first(&mut conn);
+
+    let user = match user_result {
+        Ok(u) => u,
+        Err(diesel::result::Error::NotFound) => {
+            return HttpResponse::Unauthorized().body("Invalid credentials")
+        }
+        Err(_) => return HttpResponse::InternalServerError().body("DB error"),
+    };
+
+    // Verify password using bcrypt
+    if !verify(&payload.password, &user.password_hash).unwrap_or(false) {
+        return HttpResponse::Unauthorized().body("Invalid credentials");
+    }
+
+    // Create new session
     let token_str = generate_token();
     let expiration = Utc::now() + Duration::hours(720); // 30 days
 

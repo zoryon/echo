@@ -31,4 +31,5 @@ pub struct SessionResponse {
 #[derive(Debug, Deserialize)]
 pub struct CreateSession {
     pub user_id: String,
+    pub password: String,
 }
