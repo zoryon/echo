@@ -4,6 +4,7 @@ mod handlers;
 mod db;
 mod schema;
 mod token_utils;
+mod middleware;
 
 use actix_web::{web, App, HttpRequest, HttpServer, Responder};
 use diesel::r2d2::{self, ConnectionManager};
@@ -37,6 +38,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .app_data(secret_data.clone())
+            .wrap(middleware::session_middleware::SessionMiddleware)
             .service(index)
             .configure(routes::configure)
     })

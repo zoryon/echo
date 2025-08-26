@@ -2,7 +2,7 @@ use diesel::prelude::{Insertable, Queryable};
 use serde::{Deserialize, Serialize};
 use chrono::NaiveDateTime;
 
-#[derive(Queryable, Serialize, Deserialize, Debug)]
+#[derive(Queryable, Serialize, Deserialize, Debug, Clone)]
 #[diesel(table_name = crate::schema::sessions)]
 pub struct Session {
     pub id: String,

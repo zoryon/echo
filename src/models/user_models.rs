@@ -19,10 +19,10 @@ pub struct User {
     pub username: String,
     pub password_hash: String,
     pub avatar_url: Option<String>,
-    pub created_at: Option<NaiveDateTime>,
-    pub updated_at: Option<NaiveDateTime>,
+    pub created_at: Option<chrono::NaiveDateTime>,
+    pub updated_at: Option<chrono::NaiveDateTime>,
+    pub is_admin: bool,
 }
-
 
 #[derive(Serialize)]
 pub struct UserResponse {
