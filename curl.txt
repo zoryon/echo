@@ -53,10 +53,8 @@ curl -i -X PUT "http://localhost:8080/api/users/$USER_ID/playlists/$PLAYLIST_ID"
 curl -i -X GET "http://localhost:8080/api/users/$USER_ID/playlists/$PLAYLIST_ID/songs" \
   -H "Authorization: Bearer $TOKEN"
 
-# Upload a song (multipart) 
-head -c 1024 /dev/zero > /tmp/test.mp3
-
-curl -i -X POST "$BASE_URL/songs" \
+# Upload a song (multipart): OK
+curl -i -X POST "http://localhost:8080/api/songs" \
   -H "Authorization: Bearer $TOKEN" \
-  -F 'metadata={"title":"Test Song","artist_id":"'"$USER_ID"'","album_id":null,"genre":"test","duration_seconds":120};type=application/json' \
-  -F "file=@/tmp/test.mp3;type=audio/mpeg"
+  -F "file=@./example.mp3" \
+  -F 'metadata={"title":"My Song","artist_id":"5f72867d-2ed2-4004-ad84-65a8726ff932","album_id":null,"genre":"Rock","duration_seconds":210}'
