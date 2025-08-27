@@ -49,7 +49,7 @@ curl -i -X PUT "http://localhost:8080/api/users/$USER_ID/playlists/$PLAYLIST_ID"
   -H "Content-Type: application/json" \
   -d '{"name":"Updated","description":"Updated desc","is_public":false}'
 
-# List songs in playlist: THIS GIVES 404 NOT FOUND ERROR
+# List songs in playlist: OK
 curl -i -X GET "http://localhost:8080/api/users/$USER_ID/playlists/$PLAYLIST_ID/songs" \
   -H "Authorization: Bearer $TOKEN"
 
@@ -58,3 +58,31 @@ curl -i -X POST "http://localhost:8080/api/songs" \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@./example.mp3" \
   -F 'metadata={"title":"My Song","artist_id":"5f72867d-2ed2-4004-ad84-65a8726ff932","album_id":null,"genre":"Rock","duration_seconds":210}'
+
+# Add song to playlist: OK
+curl -X POST "http://localhost:8080/api/users/$USER_ID/playlists/$PLAYLIST_ID/songs" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"song_id": "$SONG_ID","position": 1}'
+
+# Remove song from playlist
+curl -i -X DELETE "http://localhost:8080/api/users/$USER_ID/playlists/$PLAYLIST_ID/songs/$SONG_ID" \
+  -H "Authorization: Bearer $TOKEN"
+
+# List user playlists
+curl -i -X GET "http://localhost:8080/api/users/$USER_ID/playlists" \
+  -H "Authorization: Bearer $TOKEN"
+
+# List favorite songs of a specific user
+curl -i -X GET "http://localhost:8080/api/users/$USER_ID/favorites/songs" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Add song to favorite
+curl -i -X POST "http://localhost:8080/api/users/$USER_ID/favorites/songs" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"song_id":"$SONG_ID"}'
+
+# Remove favorite
+curl -i -X DELETE "http://localhost:8080/api/users/$USER_ID/favorites/songs/$SONG_ID" \
+  -H "Authorization: Bearer $TOKEN"

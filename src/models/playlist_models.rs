@@ -50,6 +50,12 @@ pub struct PlaylistSong {
     pub added_at: Option<NaiveDateTime>,
 }
 
+#[derive(Deserialize)]
+pub struct AddSongRequest {
+    pub song_id: String,
+    pub position: i32,
+}
+
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = crate::schema::playlist_songs)]
 pub struct NewPlaylistSong {

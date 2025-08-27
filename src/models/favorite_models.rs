@@ -16,3 +16,8 @@ pub struct NewFavorite {
     pub user_id: String,
     pub song_id: String,
 }
+
+#[derive(Deserialize)]
+pub struct AddFavoriteRequest {
+    pub song_id: String,
+}

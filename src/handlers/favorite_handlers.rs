@@ -3,7 +3,7 @@ use diesel::prelude::*;
 
 use crate::db::DbPool;
 use crate::db::get_conn;
-use crate::models::favorite_models::NewFavorite;
+use crate::models::favorite_models::{NewFavorite, AddFavoriteRequest};
 use crate::schema::favorites::dsl as fav_dsl;
 use crate::models::song_models::{Song, SongResponse};
 use crate::schema::songs::dsl as songs_dsl;
@@ -47,7 +47,7 @@ pub async fn list_favorites(
 pub async fn add_favorite(
     pool: web::Data<DbPool>,
     user_id_param: web::Path<String>,
-    payload: web::Json<NewFavorite>,
+    payload: web::Json<AddFavoriteRequest>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,

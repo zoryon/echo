@@ -7,6 +7,7 @@ mod utils;
 mod sftp;
 mod middleware;
 
+use actix_web::middleware::Logger;
 use actix_web::{web, App, HttpRequest, HttpServer, Responder};
 use diesel::r2d2::{self, ConnectionManager};
 use diesel::MysqlConnection;
@@ -39,6 +40,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
+            .wrap(Logger::default())
             .app_data(web::Data::new(pool.clone()))
             .app_data(secret_data.clone())
             .wrap(middleware::session_middleware::SessionMiddleware)

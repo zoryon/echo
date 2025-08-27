@@ -69,6 +69,11 @@ where
                 .optional()
                 .map_err(|_| actix_web::error::ErrorInternalServerError("DB error"))?;
 
+            // Allow unauthenticated health checks on GET /health
+            if path == "/health" && method == actix_web::http::Method::GET {
+                return service.call(req).await;
+            }
+
             // Routes that must be accessed only if logged out
             if path == "/api/sessions" && method == actix_web::http::Method::POST {
                 if session_result.is_some() {

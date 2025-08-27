@@ -4,8 +4,7 @@ use uuid::Uuid;
 
 use crate::db::DbPool;
 use crate::db::get_conn;
-use crate::models::playlist_models::NewPlaylist;
-use crate::models::playlist_models::NewPlaylistSong;
+use crate::models::playlist_models::{NewPlaylist, NewPlaylistSong, AddSongRequest};
 use crate::models::playlist_models::Playlist;
 use crate::models::song_models::{Song, SongResponse};
 use crate::schema::{playlists::dsl as playlists_dsl, playlist_songs::dsl as ps_dsl, songs::dsl as songs_dsl};
@@ -169,7 +168,7 @@ pub async fn list_playlist_songs(
 pub async fn add_song_to_playlist(
     pool: web::Data<DbPool>,
     path: web::Path<(String, String)>,
-    payload: web::Json<NewPlaylistSong>
+    payload: web::Json<AddSongRequest>
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
