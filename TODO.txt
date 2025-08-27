@@ -1,0 +1,3 @@
+1. Ownerships problems on every table.
+
+2. Security: attempt to change storage path (dangerous field) Note: Handler allows updating sftp_path; risk of pointing deletes to arbitrary paths.

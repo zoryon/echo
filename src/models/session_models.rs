@@ -30,6 +30,6 @@ pub struct SessionResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateSession {
-    pub user_id: String,
+    pub username: String,
     pub password: String,
 }

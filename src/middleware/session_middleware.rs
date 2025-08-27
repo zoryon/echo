@@ -70,7 +70,7 @@ where
                 .map_err(|_| actix_web::error::ErrorInternalServerError("DB error"))?;
 
             // Routes that must be accessed only if logged out
-            if path == "/login" && method == actix_web::http::Method::POST {
+            if path == "/api/sessions" && method == actix_web::http::Method::POST {
                 if session_result.is_some() {
                     return Err(actix_web::error::ErrorForbidden("Already logged in"));
                 }

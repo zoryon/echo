@@ -24,8 +24,8 @@ pub async fn create_session(
     };
 
     let user_result: QueryResult<User> = users::table
-        .filter(users::id.eq(&payload.user_id))
-        .select(User::as_select()) 
+        .filter(users::username.eq(&payload.username))
+        .select(User::as_select())
         .first(&mut conn);
 
     let user = match user_result {
@@ -42,12 +42,12 @@ pub async fn create_session(
     }
 
     // Create new session
-    let token_str = generate_jwt(&payload.user_id, &secret);
+    let token_str = generate_jwt(&user.id, &secret);
     let expiration = Utc::now() + Duration::hours(720); // 30 days
 
     let new_session = NewSession {
         id: Uuid::new_v4().to_string(),
-        user_id: payload.user_id.clone(),
+        user_id: user.id.clone(),
         token: token_str.clone(),
         created_at: Some(Utc::now().naive_utc()),
         expires_at: Some(expiration.naive_utc()),
@@ -64,7 +64,6 @@ pub async fn create_session(
         Err(_) => HttpResponse::InternalServerError().body("Failed to create session"),
     }
 }
-
 
 // Get current session info
 pub async fn get_current_session(

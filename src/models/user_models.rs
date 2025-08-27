@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use diesel::{prelude::Queryable, AsChangeset, Selectable};
+use diesel::{prelude::Queryable, AsChangeset, Selectable, Insertable};
 
 #[derive(AsChangeset, Deserialize)]
 #[diesel(table_name = crate::schema::users)]
@@ -31,4 +31,24 @@ pub struct UserResponse {
     pub avatar_url: Option<String>,
     pub created_at: Option<NaiveDateTime>,
     pub updated_at: Option<NaiveDateTime>,
+}
+
+// Payload for creating a new user
+#[derive(Deserialize)]
+pub struct CreateUser {
+    pub username: String,
+    pub password: String,
+    pub avatar_url: Option<String>,
+    pub is_admin: Option<bool>,
+}
+
+// Insertable model for users table
+#[derive(Insertable)]
+#[diesel(table_name = crate::schema::users)]
+pub struct NewUser {
+    pub id: String,
+    pub username: String,
+    pub password_hash: String,
+    pub avatar_url: Option<String>,
+    pub is_admin: bool,
 }
