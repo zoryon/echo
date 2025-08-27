@@ -149,9 +149,9 @@ pub async fn list_playlist_songs(
             songs_dsl::album_id,
             songs_dsl::genre,
             songs_dsl::duration_seconds,
-            songs_dsl::audio_url,
             songs_dsl::created_at,
             songs_dsl::updated_at,
+            songs_dsl::sftp_path,
         ))
         .load::<Song>(&mut conn);
 

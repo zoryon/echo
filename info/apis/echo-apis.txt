@@ -15,6 +15,7 @@ POST   /api/songs                                                           # Ad
 GET    /api/songs/{song_id}                                                 # Get a specific song's metadata
 PUT    /api/songs/{song_id}                                                 # Update a song's metadata
 DELETE /api/songs/{song_id}                                                 # Delete a song from the DB
+GET    /api/songs/{song_id}/stream                                          # Stream a specific song
 
 
 # # # PLAYLISTS & FAVORITES # # #

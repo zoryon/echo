@@ -10,8 +10,8 @@ use crate::models::user_models::User;
 use crate::schema::sessions::dsl::*;
 use crate::models::session_models::{CreateSession, Session, SessionResponse, NewSession};
 use crate::schema::users;
-use crate::token_utils::generate_jwt;
-use crate::token_utils::verify_jwt;
+use crate::utils::token_utils::generate_jwt;
+use crate::utils::token_utils::verify_jwt;
 
 pub async fn create_session(
     pool: web::Data<DbPool>,

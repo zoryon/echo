@@ -9,9 +9,9 @@ pub struct Song {
     pub album_id: Option<String>,
     pub genre: Option<String>,
     pub duration_seconds: i32,
-    pub audio_url: String,
     pub created_at: Option<NaiveDateTime>,
     pub updated_at: Option<NaiveDateTime>,
+    pub sftp_path: String,
 }
 
 #[derive(Insertable, serde::Deserialize)]
@@ -23,7 +23,7 @@ pub struct NewSong {
     pub album_id: Option<String>,
     pub genre: Option<String>,
     pub duration_seconds: i32,
-    pub audio_url: String,
+    pub sftp_path: String,
 }
 
 #[derive(AsChangeset, serde::Deserialize)]
@@ -34,7 +34,7 @@ pub struct UpdateSong {
     pub album_id: Option<String>,
     pub genre: Option<String>,
     pub duration_seconds: Option<i32>,
-    pub audio_url: Option<String>,
+    pub sftp_path: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -45,7 +45,7 @@ pub struct SongResponse {
     pub album_id: Option<String>,
     pub genre: Option<String>,
     pub duration_seconds: i32,
-    pub audio_url: String,
+    pub sftp_path: String,
     pub created_at: Option<NaiveDateTime>,
     pub updated_at: Option<NaiveDateTime>,
 }
@@ -59,7 +59,7 @@ impl From<Song> for SongResponse {
             album_id: s.album_id,
             genre: s.genre,
             duration_seconds: s.duration_seconds,
-            audio_url: s.audio_url,
+            sftp_path: s.sftp_path,
             created_at: s.created_at,
             updated_at: s.updated_at,
         }

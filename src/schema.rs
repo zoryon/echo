@@ -88,9 +88,10 @@ diesel::table! {
         #[max_length = 50]
         genre -> Nullable<Varchar>,
         duration_seconds -> Integer,
-        audio_url -> Text,
         created_at -> Nullable<Timestamp>,
         updated_at -> Nullable<Timestamp>,
+        #[max_length = 255]
+        sftp_path -> Varchar,
     }
 }
 

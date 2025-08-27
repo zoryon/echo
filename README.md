@@ -19,9 +19,8 @@ The goal is to interact with a Database (could be cloud or self hosted) with the
 ```bash
 $ openssl rand -base64 32
 ```
-
-3. Copy the example environment file:
-
+3. Set the VM variables (it's the same if hosting locally, just use localhost)
+4. Copy the example environment file:
 ```bash
 $ cp .env.example .env
 ```

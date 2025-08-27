@@ -3,7 +3,8 @@ mod routes;
 mod handlers;
 mod db;
 mod schema;
-mod token_utils;
+mod utils;
+mod sftp;
 mod middleware;
 
 use actix_web::{web, App, HttpRequest, HttpServer, Responder};
@@ -32,7 +33,7 @@ async fn main() -> std::io::Result<()> {
         .expect("JWT_SECRET must be set in .env")
         .into_bytes();
 
-     let secret_data = web::Data::new(jwt_secret);
+    let secret_data = web::Data::new(jwt_secret);
 
     HttpServer::new(move || {
         App::new()
