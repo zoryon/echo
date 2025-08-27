@@ -1,0 +1,74 @@
+# Create a user: OK
+curl -i -X POST "http://localhost:8080/api/users" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "$USER",
+    "password": "$PASSWORD",
+    "avatar_url": null
+  }'
+
+# Login: OK
+curl -i -X POST "http://localhost:8080/api/sessions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "$USER",
+    "password": "$PASSWORD"
+  }'
+
+# Logout: OK
+curl -i -X DELETE "http://localhost:8080/api/sessions/current" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get current session: OK
+curl -i -X GET "http://localhost:8080/api/sessions/current" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Update own profile: OK
+curl -i -X PATCH "http://localhost:8080/api/users/$USER_ID" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"new_name","avatar_url":"https://example.com/a.png"}'
+
+# Create playlist: OK
+curl -i -X POST "http://localhost:8080/api/users/$USER_ID/playlists" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Training","description":"Hard songs","is_public":false}'
+
+# List a specific user's playlist: OK
+curl -i -X GET "http://localhost:8080/api/users/$USER_ID/playlists" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get a playlist of a specific user: OK
+curl -i -X GET "http://localhost:8080/api/users/$USER_ID/playlists/$PLAYLIST_ID" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Update a specific playlist: OK
+curl -i -X PUT "http://localhost:8080/api/users/$USER_ID/playlists/$PLAYLIST_ID" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Updated","description":"Updated desc","is_public":false}'
+
+# List songs in playlist: THIS GIVES 404 NOT FOUND ERROR
+curl -i -X GET "http://localhost:8080/api/users/$USER_ID/playlists/$PLAYLIST_ID/songs" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Upload a song (multipart) 
+head -c 1024 /dev/zero > /tmp/test.mp3
+
+curl -i -X POST "$BASE_URL/songs" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F 'metadata={"title":"Test Song","artist_id":"'"$USER_ID"'","album_id":null,"genre":"test","duration_seconds":120};type=application/json' \
+  -F "file=@/tmp/test.mp3;type=audio/mpeg"
+
+### testing
+curl -i -X GET "http://localhost:8080/api/users/5f72867d-2ed2-4004-ad84-65a8726ff989/playlists/2a206272-3db5-4556-979b-dbcf8d6e3259/songs" \
+  -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZjcyODY3ZC0yZWQyLTQwMDQtYWQ4NC02NWE4NzI2ZmY5ODkiLCJleHAiOjE3NTg5MDA2OTB9.7cGd0waDCgOwe7ue-XdQtjy9ADvCq68ncQpF5iH4MMM"
+
+
+
+
+curl -i -X POST "http://localhost:8080/api/songs" \
+  -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI1ZjcyODY3ZC0yZWQyLTQwMDQtYWQ4NC02NWE4NzI2ZmY5ODkiLCJleHAiOjE3NTg5MDA2OTB9.7cGd0waDCgOwe7ue-XdQtjy9ADvCq68ncQpF5iH4MMM" \
+  -F "file=@./example.mp3" \
+  -F 'metadata={"title":"My Song","artist_id":"5f72867d-2ed2-4004-ad84-65a8726ff932","album_id":null,"genre":"Rock","duration_seconds":210}'

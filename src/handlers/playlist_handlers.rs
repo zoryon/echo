@@ -1,5 +1,6 @@
 use actix_web::{web, HttpResponse, Responder, ResponseError};
 use diesel::prelude::*;
+use uuid::Uuid;
 
 use crate::db::DbPool;
 use crate::db::get_conn;
@@ -44,6 +45,7 @@ pub async fn create_playlist(
         name: payload.name.clone(),
         description: payload.description.clone(),
         is_public: payload.is_public,
+        id: Uuid::new_v4().to_string(),
     };
 
     let result = diesel::insert_into(playlists_dsl::playlists)

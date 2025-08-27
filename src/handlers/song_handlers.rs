@@ -115,7 +115,9 @@ pub async fn create_song(
 
     let mut new_song = new_song.unwrap();
     new_song.id = Uuid::new_v4().to_string();
-    new_song.sftp_path = format!("/var/www/songs/{}.mp3", new_song.id); // path on VM
+
+    let home_dir = std::env::var("VM_HOME_PATH").unwrap_or("/home/ubuntu".to_string());
+    new_song.sftp_path = format!("{}/var/www/songs/{}.mp3", home_dir, new_song.id);
 
     // Upload via SFTP
     if let Err(e) = upload_file_sftp(&temp_file_path.unwrap(), &new_song.sftp_path) {

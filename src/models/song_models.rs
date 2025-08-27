@@ -17,12 +17,14 @@ pub struct Song {
 #[derive(Insertable, serde::Deserialize)]
 #[diesel(table_name = crate::schema::songs)]
 pub struct NewSong {
+    #[serde(skip_deserializing)]
     pub id: String,
     pub title: String,
     pub artist_id: String,
     pub album_id: Option<String>,
     pub genre: Option<String>,
     pub duration_seconds: i32,
+    #[serde(skip_deserializing)]
     pub sftp_path: String,
 }
 

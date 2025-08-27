@@ -20,6 +20,9 @@ pub struct Playlist {
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = crate::schema::playlists)]
 pub struct NewPlaylist {
+    #[serde(skip_deserializing)]
+    pub id: String,
+    #[serde(skip_deserializing)]
     pub user_id: String,
     pub name: String,
     pub description: Option<String>,
