@@ -61,3 +61,14 @@ pub struct PublicUser {
     pub username: String,
     pub is_admin: bool,
 }
+
+#[allow(dead_code)]
+#[derive(Queryable)]
+pub struct UserRow {
+    pub id: String,
+    pub username: String,
+    pub password_hash: String,
+    pub avatar_url: Option<String>,
+    pub created_at: Option<NaiveDateTime>,
+    pub updated_at: Option<NaiveDateTime>,
+}
