@@ -43,7 +43,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::default())
             .app_data(web::Data::new(pool.clone()))
             .app_data(secret_data.clone())
-            .wrap(middleware::session_middleware::SessionMiddleware)
+            .wrap(middleware::session_middleware::SessionMiddlewareFactory)
             .service(health)
             .service(web::scope("/api").configure(routes::configure))
     })

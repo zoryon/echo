@@ -1,41 +1,47 @@
 use actix_web::{
-    dev::{forward_ready, ServiceRequest, ServiceResponse, Transform},
+    dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
+    http::Method,
+    web::Data,
     Error, HttpMessage,
 };
-use actix_web::web::Data;
-use futures::future::{LocalBoxFuture, ready, Ready};
 use diesel::prelude::*;
-use crate::{db::DbPool, models::session_models::Session};
-use crate::schema::sessions::dsl::*;
-use crate::schema::users::dsl::*;
-use crate::models::user_models::User;
+use futures::future::{ready, LocalBoxFuture, Ready};
+use std::sync::Arc;
 
-pub struct SessionMiddleware;
+use crate::{
+    db::DbPool,
+    models::{session_models::Session, token_models::Claims, user_models::PublicUser},
+    schema::{sessions, users},
+    utils::token_utils::verify_jwt,
+};
 
-impl<S, B> Transform<S, ServiceRequest> for SessionMiddleware
+pub struct SessionMiddlewareFactory;
+
+impl<S, B> Transform<S, ServiceRequest> for SessionMiddlewareFactory
 where
-    S: actix_web::dev::Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     B: 'static,
 {
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Transform = SessionMiddlewareMiddleware<S>;
+    type Transform = SessionMiddleware<S>;
     type InitError = ();
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ready(Ok(SessionMiddlewareMiddleware { service: Arc::new(service) }))
+        ready(Ok(SessionMiddleware {
+            service: Arc::new(service),
+        }))
     }
 }
 
-use std::sync::Arc;
-pub struct SessionMiddlewareMiddleware<S> {
+pub struct SessionMiddleware<S> {
     service: Arc<S>,
 }
 
-impl<S, B> actix_web::dev::Service<ServiceRequest> for SessionMiddlewareMiddleware<S>
+impl<S, B> Service<ServiceRequest> for SessionMiddleware<S>
 where
-    S: actix_web::dev::Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     B: 'static,
 {
     type Response = ServiceResponse<B>;
@@ -46,65 +52,87 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
-
-        let pool = req.app_data::<Data<DbPool>>().unwrap().clone();
+        
+        let pool_option = req.app_data::<Data<DbPool>>().cloned();
         let path = req.path().to_string();
         let method = req.method().clone();
+        
+        let auth_header = req
+            .headers()
+            .get("Authorization")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("")
+            .to_string();
 
         Box::pin(async move {
-            let auth_header = req
-                .headers()
-                .get("Authorization")
-                .and_then(|h| h.to_str().ok())
-                .unwrap_or("");
+            if path == "/health" && method == Method::GET {
+                return service.call(req).await;
+            }
 
             let token_value = auth_header.strip_prefix("Bearer ").unwrap_or("");
+            
+            let pool = pool_option.ok_or_else(|| actix_web::error::ErrorInternalServerError("Database pool not configured"))?;
+            let mut conn = pool.get().map_err(|_| actix_web::error::ErrorInternalServerError("Could not get DB connection"))?;
 
-            let mut conn = pool.get().map_err(|_| actix_web::error::ErrorInternalServerError("DB error"))?;
+            let secret = std::env::var("JWT_SECRET")
+                .map_err(|_| actix_web::error::ErrorInternalServerError("Missing JWT_SECRET configuration"))?;
 
-            // Check if token exists in DB
-            let session_result = sessions
-                .filter(crate::schema::sessions::dsl::token.eq(token_value))
-                .first::<Session>(&mut conn)
-                .optional()
-                .map_err(|_| actix_web::error::ErrorInternalServerError("DB error"))?;
+            // REQUIREMENT 1: Verify the JWT and save the claims.
+            let claims: Option<Claims> = verify_jwt(token_value, secret.as_bytes());
+            
+            // REQUIREMENT 2: Check if the token is in the database.
+            // This is done only if the claims from the JWT were successfully verified.
+            let session_result = if claims.is_some() {
+                sessions::table
+                    .filter(sessions::token.eq(token_value))
+                    .first::<Session>(&mut conn)
+                    .optional()
+                    .map_err(|_| actix_web::error::ErrorInternalServerError("Database error checking session"))?
+            } else {
+                None
+            };
 
-            // Allow unauthenticated health checks on GET /health
-            if path == "/health" && method == actix_web::http::Method::GET {
-                return service.call(req).await;
-            }
-
-            // Routes that must be accessed only if logged out
-            if path == "/api/sessions" && method == actix_web::http::Method::POST {
-                if session_result.is_some() {
+            // This block runs only if the user has a valid, active session.
+            if let Some(session) = session_result {
+                // Forbid access to "logged-out only" routes.
+                if path == "/api/sessions" && method == Method::POST {
                     return Err(actix_web::error::ErrorForbidden("Already logged in"));
                 }
+
+                // REQUIREMENT 3: Upload claims for other functions to use.
+                // It is safe to unwrap claims here because we know it is `Some`.
+                req.extensions_mut().insert(claims.unwrap());
+
+                // You can also insert the session object if handlers need it.
+                req.extensions_mut().insert(session.clone());
+
+                // Perform additional role-based checks (e.g., admin).
+                if path == "/users" && method == Method::POST {
+                    let user_data: PublicUser = users::table
+                        .select(PublicUser::as_select())
+                        .filter(users::id.eq(session.user_id))
+                        .first::<PublicUser>(&mut conn)
+                        .map_err(|_| actix_web::error::ErrorInternalServerError("Could not query user data"))?;
+
+                    if !user_data.is_admin {
+                        return Err(actix_web::error::ErrorForbidden("This action requires admin privileges"));
+                    }
+                }
+
+                // If all checks pass, forward the request to the handler.
                 return service.call(req).await;
             }
 
-            // Routes that require login
-            if session_result.is_none() {
-                return Err(actix_web::error::ErrorUnauthorized("No active session"));
+            // This section handles all cases where the user is NOT properly authenticated
+            // (no token, invalid token, or token not in DB).
+
+            // Allow access to public routes like login.
+            if path == "/api/sessions" && method == Method::POST {
+                return service.call(req).await;
             }
 
-            let session = session_result.unwrap();
-
-            // Attach user_id to request extensions for handlers
-            req.extensions_mut().insert(session.clone()); // session.1 = user_id
-
-            // Admin-only check for POST /users
-            if path == "/users" && method == actix_web::http::Method::POST {
-                let user_data = users
-                    .filter(crate::schema::users::dsl::id.eq(session.user_id.clone()))
-                    .first::<User>(&mut conn)
-                    .map_err(|_| actix_web::error::ErrorInternalServerError("DB error"))?;
-
-                if !user_data.is_admin {
-                    return Err(actix_web::error::ErrorForbidden("Admin only"));
-                }
-            }
-
-            service.call(req).await
+            // For all other routes, deny access.
+            Err(actix_web::error::ErrorUnauthorized("A valid session is required to access this resource"))
         })
     }
 }

@@ -52,3 +52,12 @@ pub struct NewUser {
     pub avatar_url: Option<String>,
     pub is_admin: bool,
 }
+
+#[allow(dead_code)]
+#[derive(Queryable, Clone, Selectable)]
+#[diesel(table_name = crate::schema::users)]
+pub struct PublicUser {
+    pub id: String,
+    pub username: String,
+    pub is_admin: bool,
+}
