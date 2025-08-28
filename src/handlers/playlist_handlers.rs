@@ -1,26 +1,37 @@
+use actix_web::web::ReqData;
 use actix_web::{web, HttpResponse, Responder, ResponseError};
 use diesel::prelude::*;
 use uuid::Uuid;
+use diesel::result::{DatabaseErrorKind, Error as DieselError};
 
 use crate::db::DbPool;
 use crate::db::get_conn;
 use crate::models::playlist_models::{NewPlaylist, NewPlaylistSong, AddSongRequest};
 use crate::models::playlist_models::Playlist;
 use crate::models::song_models::{Song, SongResponse};
+use crate::models::token_models::Claims;
 use crate::schema::{playlists::dsl as playlists_dsl, playlist_songs::dsl as ps_dsl, songs::dsl as songs_dsl};
+use crate::utils::auth_utils::check_ownership;
 
 // --------------------- Playlists ---------------------
 pub async fn list_playlists(
     pool: web::Data<DbPool>,
-    user_id_param: web::Path<String>
+    user_id_param: web::Path<String>,
+    claims: ReqData<Claims>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
         Err(e) => return e.error_response(),
     };
 
+    let user_id: String = user_id_param.into_inner();
+    let user_id: &str = match check_ownership(&user_id, &claims) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
     let result = playlists_dsl::playlists
-        .filter(playlists_dsl::user_id.eq(user_id_param.into_inner()))
+        .filter(playlists_dsl::user_id.eq(user_id))
         .load::<Playlist>(&mut conn);
 
     match result {
@@ -32,15 +43,22 @@ pub async fn list_playlists(
 pub async fn create_playlist(
     pool: web::Data<DbPool>,
     user_id_param: web::Path<String>,
-    payload: web::Json<NewPlaylist>
+    payload: web::Json<NewPlaylist>,
+    claims: ReqData<Claims>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
         Err(e) => return e.error_response(),
     };
 
+    let user_id: String = user_id_param.into_inner();
+    let user_id: &str = match check_ownership(&user_id, &claims) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
     let new_playlist = NewPlaylist {
-        user_id: user_id_param.into_inner(),
+        user_id: user_id.to_string(),
         name: payload.name.clone(),
         description: payload.description.clone(),
         is_public: payload.is_public,
@@ -53,13 +71,17 @@ pub async fn create_playlist(
 
     match result {
         Ok(_) => HttpResponse::Created().finish(),
+        Err(DieselError::DatabaseError(DatabaseErrorKind::UniqueViolation, _)) => {
+            HttpResponse::Conflict().body("Playlist already exists")
+        }
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
 
 pub async fn get_playlist(
     pool: web::Data<DbPool>,
-    path: web::Path<(String, String)>
+    path: web::Path<(String, String)>,
+    claims: ReqData<Claims>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
@@ -68,8 +90,14 @@ pub async fn get_playlist(
 
     let (user_id_param, playlist_id_param) = path.into_inner();
 
+    let user_id: String = user_id_param.clone();
+    let user_id: &str = match check_ownership(&user_id, &claims) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+    
     let result = playlists_dsl::playlists
-        .filter(playlists_dsl::user_id.eq(user_id_param))
+        .filter(playlists_dsl::user_id.eq(user_id))
         .filter(playlists_dsl::id.eq(playlist_id_param))
         .first::<Playlist>(&mut conn);
 
@@ -82,7 +110,8 @@ pub async fn get_playlist(
 pub async fn update_playlist(
     pool: web::Data<DbPool>,
     path: web::Path<(String, String)>,
-    payload: web::Json<NewPlaylist>
+    payload: web::Json<NewPlaylist>,
+    claims: ReqData<Claims>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
@@ -91,8 +120,14 @@ pub async fn update_playlist(
 
     let (user_id_param, playlist_id_param) = path.into_inner();
 
+    let user_id: String = user_id_param.clone();
+    let user_id: &str = match check_ownership(&user_id, &claims) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
     let result = diesel::update(playlists_dsl::playlists
-        .filter(playlists_dsl::user_id.eq(user_id_param))
+        .filter(playlists_dsl::user_id.eq(user_id))
         .filter(playlists_dsl::id.eq(playlist_id_param)))
         .set((
             playlists_dsl::name.eq(&payload.name),
@@ -109,7 +144,8 @@ pub async fn update_playlist(
 
 pub async fn delete_playlist(
     pool: web::Data<DbPool>,
-    path: web::Path<(String, String)>
+    path: web::Path<(String, String)>,
+    claims: ReqData<Claims>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
@@ -118,12 +154,19 @@ pub async fn delete_playlist(
 
     let (user_id_param, playlist_id_param) = path.into_inner();
 
-    let result = diesel::delete(playlists_dsl::playlists
-        .filter(playlists_dsl::user_id.eq(user_id_param))
+    let user_id: String = user_id_param.clone();
+    let user_id: &str = match check_ownership(&user_id, &claims) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
+    let affected: Result<usize, DieselError>  = diesel::delete(playlists_dsl::playlists
+        .filter(playlists_dsl::user_id.eq(user_id))
         .filter(playlists_dsl::id.eq(playlist_id_param)))
         .execute(&mut conn);
 
-    match result {
+    match affected {
+        Ok(0) => HttpResponse::NotFound().body("Playlist not found"),
         Ok(_) => HttpResponse::Ok().finish(),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
@@ -132,13 +175,34 @@ pub async fn delete_playlist(
 // --------------------- Songs in Playlist ---------------------
 pub async fn list_playlist_songs(
     pool: web::Data<DbPool>,
-    path: web::Path<(String, String)>
+    path: web::Path<(String, String)>,
+    claims: ReqData<Claims>,
 ) -> impl Responder {
-    let ( _user_id_param, playlist_id_param ) = path.into_inner();
+    let ( user_id_param, playlist_id_param ) = path.into_inner();
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
         Err(e) => return e.error_response(),
     };
+
+    let user_id: String = user_id_param.clone();
+    let user_id: &str = match check_ownership(&user_id, &claims) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
+    // Ensure the playlist actually belongs to the user
+    let playlist_owned = match playlists_dsl::playlists
+        .filter(playlists_dsl::id.eq(&playlist_id_param))
+        .filter(playlists_dsl::user_id.eq(user_id))
+        .first::<Playlist>(&mut conn)
+        .optional() {
+            Ok(opt) => opt,
+            Err(_) => return HttpResponse::InternalServerError().finish(),
+        };
+
+    if playlist_owned.is_none() {
+        return HttpResponse::NotFound().body("Playlist not found");
+    }
 
     let result = ps_dsl::playlist_songs
         .inner_join(songs_dsl::songs.on(ps_dsl::song_id.eq(songs_dsl::id)))
@@ -168,14 +232,35 @@ pub async fn list_playlist_songs(
 pub async fn add_song_to_playlist(
     pool: web::Data<DbPool>,
     path: web::Path<(String, String)>,
-    payload: web::Json<AddSongRequest>
+    payload: web::Json<AddSongRequest>,
+    claims: ReqData<Claims>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
         Err(e) => return e.error_response(),
     };
 
-    let (_user_id_param, playlist_id_param) = path.into_inner();
+    let (user_id_param, playlist_id_param) = path.into_inner();
+
+    let user_id: String = user_id_param.clone();
+    let user_id: &str = match check_ownership(&user_id, &claims) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
+    // Ensure the playlist actually belongs to the user
+    let playlist_owned = match playlists_dsl::playlists
+        .filter(playlists_dsl::id.eq(&playlist_id_param))
+        .filter(playlists_dsl::user_id.eq(user_id))
+        .first::<Playlist>(&mut conn)
+        .optional() {
+            Ok(opt) => opt,
+            Err(_) => return HttpResponse::InternalServerError().finish(),
+        };
+
+    if playlist_owned.is_none() {
+        return HttpResponse::NotFound().body("Playlist not found or not owned by user");
+    }
 
     let new_song = NewPlaylistSong {
         playlist_id: playlist_id_param,
@@ -189,27 +274,52 @@ pub async fn add_song_to_playlist(
 
     match result {
         Ok(_) => HttpResponse::Created().finish(),
+        Err(DieselError::DatabaseError(DatabaseErrorKind::UniqueViolation, _)) => {
+            HttpResponse::Conflict().body("Song already in playlist")
+        }
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
 
 pub async fn remove_song_from_playlist(
     pool: web::Data<DbPool>,
-    path: web::Path<(String, String, String)>
+    path: web::Path<(String, String, String)>,
+    claims: ReqData<Claims>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
         Err(e) => return e.error_response(),
     };
 
-    let (_user_id_param, playlist_id_param, song_id_param) = path.into_inner();
+    let (user_id_param, playlist_id_param, song_id_param) = path.into_inner();
 
-    let result = diesel::delete(ps_dsl::playlist_songs
+    let user_id: String = user_id_param.clone();
+    let user_id: &str = match check_ownership(&user_id, &claims) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+
+    // Ensure the playlist actually belongs to the user
+    let playlist_owned = match playlists_dsl::playlists
+        .filter(playlists_dsl::id.eq(&playlist_id_param))
+        .filter(playlists_dsl::user_id.eq(user_id))
+        .first::<Playlist>(&mut conn)
+        .optional() {
+            Ok(opt) => opt,
+            Err(_) => return HttpResponse::InternalServerError().finish(),
+        };
+
+    if playlist_owned.is_none() {
+        return HttpResponse::NotFound().body("Playlist not found or not owned by user");
+    }
+
+    let affected = diesel::delete(ps_dsl::playlist_songs
         .filter(ps_dsl::playlist_id.eq(playlist_id_param))
         .filter(ps_dsl::song_id.eq(song_id_param)))
         .execute(&mut conn);
 
-    match result {
+    match affected {
+        Ok(0) => HttpResponse::NotFound().body("Song not found"),
         Ok(_) => HttpResponse::Ok().finish(),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
