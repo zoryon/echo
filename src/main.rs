@@ -6,6 +6,7 @@ mod schema;
 mod utils;
 mod sftp;
 mod middleware;
+mod constants;
 
 use actix_web::middleware::Logger;
 use actix_web::{web, App, HttpRequest, HttpServer, Responder};

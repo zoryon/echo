@@ -7,12 +7,9 @@ use actix_web::{
 use diesel::prelude::*;
 use futures::future::{ready, LocalBoxFuture, Ready};
 use std::sync::Arc;
-
+use regex::Regex;
 use crate::{
-    db::DbPool,
-    models::{session_models::Session, token_models::Claims, user_models::PublicUser},
-    schema::{sessions, users},
-    utils::token_utils::verify_jwt,
+    constants::middleware_constants::ADMIN_ONLY_ROUTES, db::DbPool, models::{session_models::Session, token_models::Claims, user_models::PublicUser}, schema::{sessions, users}, utils::token_utils::verify_jwt
 };
 
 pub struct SessionMiddlewareFactory;
@@ -34,7 +31,6 @@ where
         }))
     }
 }
-
 pub struct SessionMiddleware<S> {
     service: Arc<S>,
 }
@@ -106,8 +102,18 @@ where
                 // You can also insert the session object if handlers need it.
                 req.extensions_mut().insert(session.clone());
 
-                // Perform additional role-based checks (e.g., admin).
-                if path == "/users" && method == Method::POST {
+                let requires_admin: bool = ADMIN_ONLY_ROUTES.iter().any(|(route_path, route_method)| {
+                    if route_method != &method { return false; }
+
+                    // Convert route template to regex, e.g., /api/songs/{song_id} -> ^/api/songs/[^/]+$
+                    let regex_pattern: Regex = Regex::new(
+                        &format!("^{}$", regex::escape(route_path).replace(r"\{song_id\}", r"[^/]+"))
+                    ).unwrap();
+
+                    regex_pattern.is_match(&path)
+                });
+
+                if requires_admin {
                     let user_data: PublicUser = users::table
                         .select(PublicUser::as_select())
                         .filter(users::id.eq(session.user_id))
