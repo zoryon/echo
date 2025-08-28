@@ -1,4 +1,5 @@
-use actix_web::{web, HttpResponse, Responder, HttpRequest, ResponseError};
+use actix_web::web::ReqData;
+use actix_web::{web, HttpResponse, Responder, ResponseError};
 use diesel::prelude::*;
 use chrono::{Utc, Duration};
 use uuid::Uuid;
@@ -6,17 +7,17 @@ use bcrypt::verify;
 
 use crate::db::DbPool;
 use crate::db::get_conn;
+use crate::models::token_models::Claims;
 use crate::models::user_models::User;
 use crate::schema::sessions::dsl::*;
 use crate::models::session_models::{CreateSession, Session, SessionResponse, NewSession};
 use crate::schema::users;
 use crate::utils::token_utils::generate_jwt;
-use crate::utils::token_utils::verify_jwt;
 
 pub async fn create_session(
     pool: web::Data<DbPool>,
     payload: web::Json<CreateSession>,
-    secret: web::Data<Vec<u8>>
+    secret: web::Data<Vec<u8>>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
@@ -66,58 +67,53 @@ pub async fn create_session(
 }
 
 // Get current session info
-pub async fn get_current_session(
-    req: HttpRequest, 
+pub async fn get_session(
+    session_id_path: web::Path<String>, 
     pool: web::Data<DbPool>,
-    secret: web::Data<Vec<u8>>
+    claims: ReqData<Claims>,
 ) -> impl Responder {
-    let auth_header = match req.headers().get("Authorization") {
-        Some(h) => h.to_str().unwrap_or(""),
-        None => return HttpResponse::Unauthorized().body("Missing token"),
-    };
-    let token_value = auth_header.strip_prefix("Bearer ").unwrap_or("");
-
-    // Verify JWT signature first
-    let claims = match verify_jwt(token_value, &secret) {
-        Some(c) => c,
-        None => return HttpResponse::Unauthorized().body("Invalid token"),
-    };
-
-    if claims.exp < Utc::now().timestamp() || claims.sub.is_empty(){
-        return HttpResponse::Unauthorized().body("Token expired");
-    }
-
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
         Err(e) => return e.error_response(),
     };
 
-    let result = sessions
-        .filter(token.eq(token_value))
-        .first::<Session>(&mut conn);
+    let session_id: String = session_id_path.into_inner();
+    let logged_user_id: &String = &claims.sub;
 
-    match result {
-        Ok(session) => HttpResponse::Ok().json(session),
-        Err(diesel::result::Error::NotFound) => HttpResponse::Unauthorized().body("Invalid token"),
-        Err(_) => HttpResponse::InternalServerError().body("DB error"),
+    let session_result = sessions
+        .filter(id.eq(&session_id))
+        .filter(user_id.eq(logged_user_id))
+        .first::<Session>(&mut conn)
+        .optional();
+
+    match session_result {
+        Ok(Some(sess)) => HttpResponse::Ok().json(sess),
+        Ok(None) => HttpResponse::NotFound().body("Not Found"),
+        Err(_) => HttpResponse::InternalServerError().body("Database error"),
     }
 }
 
 // Log out (delete session)
-pub async fn delete_current_session(req: HttpRequest, pool: web::Data<DbPool>) -> impl Responder {
-    let auth_header = match req.headers().get("Authorization") {
-        Some(h) => h.to_str().unwrap_or(""),
-        None => return HttpResponse::Unauthorized().body("Missing token"),
-    };
-    let token_value = auth_header.strip_prefix("Bearer ").unwrap_or("");
+pub async fn delete_session(
+    session_id_path: web::Path<String>,
+    pool: web::Data<DbPool>,
+    claims: ReqData<Claims>,
+) -> impl Responder {
+    let session_id = session_id_path.into_inner();
+    let logged_user_id = &claims.sub;
 
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
         Err(e) => return e.error_response(),
     };
 
-    match diesel::delete(sessions.filter(token.eq(token_value))).execute(&mut conn) {
-        Ok(_) => HttpResponse::Ok().body("Logged out"),
+    let deleted_count = diesel::delete(
+        sessions.filter(id.eq(&session_id)).filter(user_id.eq(logged_user_id))
+    ).execute(&mut conn);
+
+    match deleted_count {
+        Ok(0) => HttpResponse::NotFound().body("Not Found"),
+        Ok(_) => HttpResponse::Ok().body("Session deleted"),
         Err(_) => HttpResponse::InternalServerError().body("Failed to delete session"),
     }
 }
