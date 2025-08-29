@@ -1,6 +1,3 @@
-use std::fs::File;
-use std::io::Write;
-
 use actix_web::{web, HttpResponse, Responder, ResponseError};
 use actix_multipart::Multipart;
 use diesel::prelude::*;
@@ -14,7 +11,7 @@ use crate::db::get_conn;
 use crate::models::pagination_models::Pagination;
 use crate::models::song_models::{Song, SongResponse, NewSong, UpdateSong};
 use crate::schema::songs::dsl::*;
-use crate::utils::file_utils::{upload_file_sftp, delete_file_sftp, stream_song_sftp};
+use crate::utils::audio_utils::normalize_song_async;
 use crate::utils::pagination_utils::validate_pagination;
 
 pub async fn list_songs(
@@ -43,7 +40,7 @@ pub async fn list_songs(
             s.genre_id,
             g.name AS genre_name,
             s.duration_seconds,
-            s.sftp_path,
+            s.object_url,
             s.created_at,
             s.updated_at
         FROM songs s
@@ -81,7 +78,7 @@ pub async fn get_song(
             s.genre_id,
             g.name AS genre_name,
             s.duration_seconds,
-            s.sftp_path,
+            s.object_url,
             s.created_at,
             s.updated_at
         FROM songs s
@@ -115,14 +112,15 @@ pub async fn stream_song(
         Err(e) => return e.error_response(),
     };
 
-    let song_id_param = song_id_param.into_inner();
-    let song_record = songs.filter(id.eq(song_id_param))
+    let song_id = song_id_param.into_inner();
+    let song_record = songs.filter(id.eq(song_id))
         .first::<crate::models::song_models::Song>(&mut conn);
 
     match song_record {
         Ok(song) => {
-            // stream_song_sftp returns HttpResponse with streaming body
-            stream_song_sftp(song.sftp_path).await
+            HttpResponse::Found() // 302 redirect
+                .append_header(("Location", song.object_url)) 
+                .finish()
         },
         Err(_) => HttpResponse::NotFound().finish(),
     }
@@ -133,7 +131,7 @@ pub async fn create_song(
     mut payload: Multipart,
 ) -> impl Responder {
     let mut new_song: Option<NewSong> = None;
-    let mut temp_file_path: Option<String> = None;
+    let mut file_buffer: Option<Vec<u8>> = None;
 
     // Iterate multipart fields
     while let Ok(Some(mut field)) = payload.try_next().await {
@@ -141,42 +139,78 @@ pub async fn create_song(
         let name = content_disposition.get_name().unwrap();
 
         if name == "file" {
-            // Save file temporarily
-            let file_id = Uuid::new_v4().to_string();
-            let file_path = format!("/tmp/{}", file_id);
-            let mut f = File::create(&file_path).unwrap();
-
+            let mut buf = Vec::new();
             while let Some(chunk) = field.next().await {
-                let data = chunk.unwrap();
-                f.write_all(&data).unwrap();
+                let data = match chunk {
+                    Ok(d) => d,
+                    Err(e) => {
+                        return HttpResponse::InternalServerError()
+                            .body(format!("Failed to read file chunk: {}", e))
+                    }
+                };
+                buf.extend_from_slice(&data);
             }
-
-            temp_file_path = Some(file_path);
+            file_buffer = Some(buf);
         } else if name == "metadata" {
-            // Parse JSON metadata
             let mut bytes = web::BytesMut::new();
             while let Some(chunk) = field.next().await {
-                let data = chunk.unwrap();
+                let data = match chunk {
+                    Ok(d) => d,
+                    Err(e) => {
+                        return HttpResponse::InternalServerError()
+                            .body(format!("Failed to read metadata chunk: {}", e))
+                    }
+                };
                 bytes.extend_from_slice(&data);
             }
-            new_song = Some(serde_json::from_slice::<NewSong>(&bytes).unwrap());
+            new_song = match serde_json::from_slice::<NewSong>(&bytes) {
+                Ok(ns) => Some(ns),
+                Err(e) => return HttpResponse::BadRequest().body(format!("Invalid metadata JSON: {}", e)),
+            };
         }
     }
 
-    if new_song.is_none() || temp_file_path.is_none() {
+    if new_song.is_none() || file_buffer.is_none() {
         return HttpResponse::BadRequest().body("Missing file or metadata");
     }
 
-    let mut new_song = new_song.unwrap();
+    let mut new_song: NewSong = new_song.unwrap();
     new_song.id = Uuid::new_v4().to_string();
 
-    let home_dir = std::env::var("VM_HOME_PATH").unwrap_or("/home/ubuntu".to_string());
-    new_song.sftp_path = format!("{}/var/www/songs/{}.mp3", home_dir, new_song.id);
+    // Normalize
+    let buffer: Vec<u8> = file_buffer.unwrap();
+    let normalized_file: Vec<u8> = match normalize_song_async(&buffer).await {
+        Ok(res) => res,
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .body(format!("Audio normalization error: {}", e))
+        }
+    };
 
-    // Upload via SFTP
-    if let Err(e) = upload_file_sftp(&temp_file_path.unwrap(), &new_song.sftp_path) {
-        return HttpResponse::InternalServerError().body(format!("SFTP error: {}", e));
+    // Upload to Object Storage
+    let write_base: String = std::env::var("OBJECT_STORAGE_WRITE_BASE_URL")
+        .expect("OBJECT_STORAGE_WRITE_BASE_URL not set");
+    let read_base: String = std::env::var("OBJECT_STORAGE_READ_BASE_URL")
+        .expect("OBJECT_STORAGE_READ_BASE_URL not set");
+
+    let object_name: String = format!("{}.mp3", new_song.id);
+    let upload_url: String = format!("{}/{}", write_base, object_name);
+
+    let client = reqwest::Client::new();
+    let res = client
+        .put(&upload_url)
+        .header("Content-Type", "audio/mpeg")
+        .body(normalized_file)
+        .send()
+        .await;
+
+    if res.is_err() || !res.as_ref().unwrap().status().is_success() {
+        return HttpResponse::InternalServerError().body("Failed to upload to Object Storage");
     }
+
+    // Save the READ PAR for future playback 
+    let read_url = format!("{}/{}", read_base, object_name);
+    new_song.object_url = read_url;
 
     // Insert into DB
     let mut conn = match get_conn(&pool) {
@@ -235,24 +269,30 @@ pub async fn delete_song(
         Err(e) => return e.error_response(),
     };
 
-    let song_id_param = song_id_param.into_inner();
+    let song_id  = song_id_param.into_inner();
 
-    // 1️⃣ Fetch the song to get its sftp_path
-    let song_record = match songs.filter(id.eq(&song_id_param))
+    // Fetch the song to get its Object URL
+    let song_record = match songs.filter(id.eq(&song_id))
         .first::<crate::models::song_models::Song>(&mut conn) 
     {
         Ok(s) => s,
         Err(_) => return HttpResponse::NotFound().finish(),
     };
 
-    // 2️⃣ Delete file from VM via SFTP
-    if let Err(e) = delete_file_sftp(&song_record.sftp_path) {
-        return HttpResponse::InternalServerError()
-            .body(format!("Failed to delete remote file: {}", e));
-    }
+    // Delete object from Object Storage via signed URL
+    let client = reqwest::Client::new();
+    let res = client
+        .delete(&song_record.object_url)
+        .send()
+        .await;
 
-    // 3️⃣ Delete DB record
-    let deleted = diesel::delete(songs.filter(id.eq(song_id_param)))
+    if res.is_err() || !res.as_ref().unwrap().status().is_success() {
+        return HttpResponse::InternalServerError()
+            .body("Failed to delete object from storage");
+    }
+    
+    // Delete DB record
+    let deleted = diesel::delete(songs.filter(id.eq(song_id)))
         .execute(&mut conn);
 
     match deleted {

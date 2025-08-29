@@ -48,7 +48,7 @@ pub async fn list_favorites(
             s.genre_id,
             g.name AS genre_name,
             s.duration_seconds,
-            s.sftp_path,
+            s.object_url,
             s.created_at,
             s.updated_at
         FROM favorites f

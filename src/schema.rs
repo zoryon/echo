@@ -96,7 +96,7 @@ diesel::table! {
         genre_id -> Nullable<Integer>,
         duration_seconds -> Integer,
         #[max_length = 255]
-        sftp_path -> Varchar,
+        object_url -> Varchar,
         created_at -> Nullable<Timestamp>,
         updated_at -> Nullable<Timestamp>,
     }

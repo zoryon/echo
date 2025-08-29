@@ -1,7 +1,7 @@
 use diesel::{prelude::QueryableByName, AsChangeset, Insertable, Queryable};
 use chrono::NaiveDateTime;
 use serde::Serialize;
-use diesel::sql_types::{Text, Integer, Nullable};
+use diesel::sql_types::{Text, Integer, Nullable, Timestamp};
 
 #[derive(Queryable, Debug, serde::Serialize)]
 pub struct Song {
@@ -11,7 +11,7 @@ pub struct Song {
     pub album_id: Option<String>,
     pub genre_id: Option<i32>,
     pub duration_seconds: i32,
-    pub sftp_path: String,
+    pub object_url: String,
     pub created_at: Option<NaiveDateTime>,
     pub updated_at: Option<NaiveDateTime>,
 }
@@ -27,7 +27,7 @@ pub struct NewSong {
     pub genre_id: Option<i32>,
     pub duration_seconds: i32,
     #[serde(skip_deserializing)]
-    pub sftp_path: String,
+    pub object_url: String,
 }
 
 #[derive(AsChangeset, serde::Deserialize)]
@@ -38,43 +38,41 @@ pub struct UpdateSong {
     pub album_id: Option<String>,
     pub genre_id: Option<i32>,
     pub duration_seconds: Option<i32>,
-    pub sftp_path: Option<String>,
 }
 
 #[derive(QueryableByName, Serialize)]
 pub struct SongResponse {
-    #[sql_type = "Text"]
-    id: String,
-    #[sql_type = "Text"]
-    title: String,
-    
-    #[sql_type = "Text"]
-    artist_id: String,
-    #[sql_type = "Text"]
-    artist_name: String,
-    
-    #[sql_type = "Text"]
-    album_id: String,
-    #[sql_type = "Text"]
-    album_name: String,
-    
-    #[sql_type = "Text"]
-    genre_id: String,
-    #[sql_type = "Text"]
-    genre_name: String,
-    
-    #[sql_type = "Integer"]
-    duration_seconds: i32,
-    
-    #[sql_type = "Text"]
-    sftp_path: String,
-    
-    #[sql_type = "Nullable<Text>"]
-    created_at: Option<String>,
-    #[sql_type = "Nullable<Text>"]
-    updated_at: Option<String>,
-}
+    #[diesel(sql_type = Text)]
+    pub id: String,
+    #[diesel(sql_type = Text)]
+    pub title: String,
 
+    #[diesel(sql_type = Text)]
+    pub artist_id: String,
+    #[diesel(sql_type = Nullable<Text>)]
+    pub artist_name: Option<String>,
+
+    #[diesel(sql_type = Nullable<Text>)]
+    pub album_id: Option<String>,
+    #[diesel(sql_type = Nullable<Text>)]
+    pub album_name: Option<String>,
+
+    #[diesel(sql_type = Nullable<Integer>)]
+    pub genre_id: Option<i32>,
+    #[diesel(sql_type = Nullable<Text>)]
+    pub genre_name: Option<String>,
+
+    #[diesel(sql_type = Integer)]
+    pub duration_seconds: i32,
+
+    #[diesel(sql_type = Text)]
+    pub object_url: String,
+
+    #[diesel(sql_type = Nullable<Timestamp>)]
+    pub created_at: Option<NaiveDateTime>,
+    #[diesel(sql_type = Nullable<Timestamp>)]
+    pub updated_at: Option<NaiveDateTime>,
+}
 impl From<Song> for SongResponse {
     fn from(s: Song) -> Self {
         SongResponse {
@@ -82,19 +80,19 @@ impl From<Song> for SongResponse {
             title: s.title,
             
             artist_id: s.artist_id.clone(),
-            artist_name: String::new(),
+            artist_name: None, 
+
+            album_id: s.album_id.clone(), 
+            album_name: None, 
             
-            album_id: s.album_id.clone().unwrap_or_default(),
-            album_name: String::new(), 
-            
-            genre_id: s.genre_id.map(|g| g.to_string()).unwrap_or_default(),
-            genre_name: String::new(), 
+            genre_id: s.genre_id,
+            genre_name: None, 
             
             duration_seconds: s.duration_seconds,
-            sftp_path: s.sftp_path,
+            object_url: s.object_url,
             
-            created_at: s.created_at.map(|dt| dt.to_string()),
-            updated_at: s.updated_at.map(|dt| dt.to_string()),
+            created_at: s.created_at,   
+            updated_at: s.updated_at, 
         }
     }
 }

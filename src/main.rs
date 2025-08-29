@@ -4,7 +4,6 @@ mod handlers;
 mod db;
 mod schema;
 mod utils;
-mod sftp;
 mod middleware;
 mod constants;
 
@@ -48,8 +47,8 @@ async fn main() -> std::io::Result<()> {
             .service(health)
             .service(web::scope("/api").configure(routes::configure))
     })
-    .bind(("0.0.0.0", port))?
-    .workers(1)
-    .run()
-    .await
+        .bind(("0.0.0.0", port))?
+        .workers(1)
+        .run()
+        .await
 }

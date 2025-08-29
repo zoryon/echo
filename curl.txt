@@ -57,7 +57,7 @@ curl -i -X GET "http://localhost:8080/api/users/$USER_ID/playlists/$PLAYLIST_ID/
 curl -i -X POST "http://localhost:8080/api/songs" \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@./example.mp3" \
-  -F 'metadata={"title":"My Song","artist_id":"5f72867d-2ed2-4004-ad84-65a8726ff932","album_id":null,"genre":"Rock","duration_seconds":210}'
+  -F 'metadata={"title":"My Song","artist_id":"5f72867d-2ed2-4004-ad84-65a8726ff932","album_id":null,"genre_id":1,"duration_seconds":210}'
 
 # Add song to playlist: OK
 curl -X POST "http://localhost:8080/api/users/$USER_ID/playlists/$PLAYLIST_ID/songs" \
