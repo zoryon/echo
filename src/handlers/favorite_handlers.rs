@@ -12,6 +12,7 @@ use crate::models::token_models::Claims;
 use crate::schema::favorites::dsl as fav_dsl;
 use crate::models::song_models::{SongResponse};
 use crate::utils::auth_utils::check_ownership;
+use crate::utils::pagination_utils::validate_pagination;
 
 pub async fn list_favorites(
     pool: web::Data<DbPool>,
@@ -31,6 +32,10 @@ pub async fn list_favorites(
     };
 
     let pagination = query.into_inner();
+    match validate_pagination(&pagination) {
+        Ok(v) => v,
+        Err(e) => return e.error_response(),
+    };
 
     let sql = format!(r#"
         SELECT 
@@ -53,7 +58,7 @@ pub async fn list_favorites(
         LEFT JOIN genres g ON s.genre_id = g.id
         WHERE f.user_id = $1
         {}
-    "#, pagination.sql_clause());
+    "#, pagination.sql_clause().unwrap());
 
     match diesel::sql_query(sql)
         .bind::<Text, _>(user_id)

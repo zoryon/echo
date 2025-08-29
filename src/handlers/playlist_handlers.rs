@@ -14,6 +14,7 @@ use crate::models::song_models::{SongResponse};
 use crate::models::token_models::Claims;
 use crate::schema::{playlists::dsl as playlists_dsl, playlist_songs::dsl as ps_dsl};
 use crate::utils::auth_utils::check_ownership;
+use crate::utils::pagination_utils::validate_pagination;
 
 // --------------------- Playlists ---------------------
 pub async fn list_playlists(
@@ -34,11 +35,15 @@ pub async fn list_playlists(
     };
 
     let pagination = query.into_inner();
+    let (limit, offset) = match validate_pagination(&pagination) {
+        Ok(v) => v,
+        Err(e) => return e.error_response(),
+    };
 
     let result = playlists_dsl::playlists
         .filter(playlists_dsl::user_id.eq(user_id))
-        .limit(pagination.limit())
-        .offset(pagination.offset())
+        .limit(limit)
+        .offset(offset)
         .load::<Playlist>(&mut conn);
 
     match result {
@@ -213,6 +218,10 @@ pub async fn list_playlist_songs(
     }
 
     let pagination = query.into_inner();
+    match validate_pagination(&pagination) {
+        Ok(v) => v,
+        Err(e) => return e.error_response(),
+    };
 
     let sql = format!(r#"
         SELECT 
@@ -235,7 +244,7 @@ pub async fn list_playlist_songs(
         LEFT JOIN genres g ON s.genre_id = g.id
         WHERE ps.playlist_id = $1
         {}
-    "#, pagination.sql_clause());
+    "#, pagination.sql_clause().unwrap());
 
     match diesel::sql_query(sql)
         .bind::<Text, _>(&playlist_id_param)

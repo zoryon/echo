@@ -15,6 +15,7 @@ use crate::models::pagination_models::Pagination;
 use crate::models::song_models::{Song, SongResponse, NewSong, UpdateSong};
 use crate::schema::songs::dsl::*;
 use crate::utils::file_utils::{upload_file_sftp, delete_file_sftp, stream_song_sftp};
+use crate::utils::pagination_utils::validate_pagination;
 
 pub async fn list_songs(
     pool: web::Data<DbPool>,
@@ -26,6 +27,10 @@ pub async fn list_songs(
     };
 
     let pagination = query.into_inner();
+    match validate_pagination(&pagination) {
+        Ok(v) => v,
+        Err(e) => return e.error_response(),
+    };
 
     let sql = format!(r#"
         SELECT
@@ -46,7 +51,7 @@ pub async fn list_songs(
         LEFT JOIN albums al ON s.album_id = al.id
         LEFT JOIN genres g ON s.genre_id = g.id
         {}
-    "#, pagination.sql_clause());
+    "#, pagination.sql_clause().unwrap());
 
     match diesel::sql_query(sql).load::<SongResponse>(&mut conn) {
         Ok(list) => HttpResponse::Ok().json(list),
