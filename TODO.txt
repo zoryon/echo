@@ -29,21 +29,5 @@ GET /api/songs?sort=release_date&order=desc
 Add support for random song discovery.
 GET /api/songs?random=true&limit=10
 
-10. Song Downloads
-Allow clients to download one song at a time:
-GET /api/songs/{song_id}/download
-
-11. Playlist Visibility (Fix)
-Default: is_public = false on playlist creation.
-If is_public = true:
-Anyone can view playlists & songs.
-Only the owner can edit/delete.
-
-12. Favorites Visibility (Fix)
-Default: visible only to the owner.
-If is_public = true:
-Anyone can view favorites & their songs.
-Only the owner can edit/delete.
-
 13. Next Step
 ➡️ Review GitHub issues list and check which of these are already covered / partially done.

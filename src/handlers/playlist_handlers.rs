@@ -29,10 +29,9 @@ pub async fn list_playlists(
     };
 
     let user_id: String = user_id_param.into_inner();
-    let user_id: &str = match check_ownership(&user_id, &claims) {
-        Ok(id) => id,
-        Err(resp) => return resp,
-    };
+    let logged_in_user_id: &String = &claims.sub;
+
+    let is_owner: bool = logged_in_user_id == &user_id;
 
     let pagination = query.into_inner();
     let (limit, offset) = match validate_pagination(&pagination) {
@@ -40,8 +39,20 @@ pub async fn list_playlists(
         Err(e) => return e.error_response(),
     };
 
-    let result = playlists_dsl::playlists
-        .filter(playlists_dsl::user_id.eq(user_id))
+    // Build the query conditionally.
+    // We start by filtering on the user ID and boxing the query.
+    let mut query = playlists_dsl::playlists
+        .filter(playlists_dsl::user_id.eq(&user_id))
+        .into_boxed();
+
+    // 4. If the requester is NOT the owner, add another filter for public playlists.
+    if !is_owner {
+        // Assuming your schema has a boolean column named `is_public`
+        query = query.filter(playlists_dsl::is_public.eq(true));
+    }
+
+    // Now, apply pagination and execute the final query.
+    let result = query
         .limit(limit)
         .offset(offset)
         .load::<Playlist>(&mut conn);
@@ -103,15 +114,24 @@ pub async fn get_playlist(
     let (user_id_param, playlist_id_param) = path.into_inner();
 
     let user_id: String = user_id_param.clone();
-    let user_id: &str = match check_ownership(&user_id, &claims) {
-        Ok(id) => id,
-        Err(resp) => return resp,
-    };
+    let logged_in_user_id: &String = &claims.sub;
+
+    let is_owner: bool = logged_in_user_id == &user_id;
     
-    let result = playlists_dsl::playlists
-        .filter(playlists_dsl::user_id.eq(user_id))
-        .filter(playlists_dsl::id.eq(playlist_id_param))
-        .first::<Playlist>(&mut conn);
+    // Building a query to find the specific playlist for the user.
+    // Use .into_boxed() to allow for conditionally adding more filters.
+    let mut query = playlists_dsl::playlists
+        .filter(playlists_dsl::id.eq(&playlist_id_param))
+        .filter(playlists_dsl::user_id.eq(&user_id_param))
+        .into_boxed();
+
+    // If the person making the request is NOT the owner, they can only
+    // see the playlist if it's public. We add this as a required condition.
+    if !is_owner {
+        query = query.filter(playlists_dsl::is_public.eq(true));
+    }
+
+    let result = query.first::<Playlist>(&mut conn);
 
     match result {
         Ok(p) => HttpResponse::Ok().json(p),
@@ -191,52 +211,48 @@ pub async fn list_playlist_songs(
     query: web::Query<Pagination>,
     claims: ReqData<Claims>,
 ) -> impl Responder {
-    let ( user_id_param, playlist_id_param ) = path.into_inner();
+    // Only the playlist_id is needed from the path for the initial query
+    let (_user_id_param, playlist_id_param) = path.into_inner();
+    let logged_in_user_id = &claims.sub;
+
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
         Err(e) => return e.error_response(),
     };
 
-    let user_id: String = user_id_param.clone();
-    let user_id: &str = match check_ownership(&user_id, &claims) {
-        Ok(id) => id,
-        Err(resp) => return resp,
+    // Fetch the playlist by its ID first to check its status (public/private)
+    let playlist = match playlists_dsl::playlists
+        .find(&playlist_id_param)
+        .first::<Playlist>(&mut conn)
+        .optional()
+    {
+        Ok(Some(p)) => p, // playlist found
+        Ok(None) => return HttpResponse::NotFound().body("Playlist not found"), // playlist does not exist
+        Err(_) => return HttpResponse::InternalServerError().finish(), // database error
     };
 
-    // Ensure the playlist actually belongs to the user
-    let playlist_owned = match playlists_dsl::playlists
-        .filter(playlists_dsl::id.eq(&playlist_id_param))
-        .filter(playlists_dsl::user_id.eq(user_id))
-        .first::<Playlist>(&mut conn)
-        .optional() {
-            Ok(opt) => opt,
-            Err(_) => return HttpResponse::InternalServerError().finish(),
-        };
+    let is_public: bool = playlist.is_public.unwrap_or(false);
 
-    if playlist_owned.is_none() {
+    // Authorize access
+    // Allow access if the playlist is public OR if the logged-in user is the owner
+    let is_owner: bool = playlist.user_id == *logged_in_user_id;
+    if !is_public && !is_owner {
+        // It's private and the requester is not the owner.
+        // Return 404 to avoid revealing its existence.
         return HttpResponse::NotFound().body("Playlist not found");
     }
 
-    let pagination = query.into_inner();
-    match validate_pagination(&pagination) {
-        Ok(v) => v,
-        Err(e) => return e.error_response(),
+    // The user is authorized. Proceed to fetch songs
+    let pagination: Pagination = query.into_inner();
+    if let Err(e) = validate_pagination(&pagination) {
+        return e.error_response();
     };
-
+    
     let sql = format!(r#"
         SELECT 
-            s.id,
-            s.title,
-            s.artist_id,
-            a.name AS artist_name,
-            s.album_id,
-            al.name AS album_name,
-            s.genre_id,
-            g.name AS genre_name,
-            s.duration_seconds,
-            s.object_url,
-            s.created_at,
-            s.updated_at
+            s.id, s.title, s.artist_id, a.name AS artist_name,
+            s.album_id, al.name AS album_name, s.genre_id, g.name AS genre_name,
+            s.duration_seconds, s.object_url, s.created_at, s.updated_at
         FROM playlist_songs ps
         JOIN songs s ON ps.song_id = s.id
         JOIN artists a ON s.artist_id = a.id
@@ -244,11 +260,11 @@ pub async fn list_playlist_songs(
         LEFT JOIN genres g ON s.genre_id = g.id
         WHERE ps.playlist_id = $1
         {}
-    "#, pagination.sql_clause().unwrap());
+    "#, pagination.sql_clause().unwrap_or_default());
 
     match diesel::sql_query(sql)
         .bind::<Text, _>(&playlist_id_param)
-        .load::<SongResponse>(&mut conn)
+        .load::<SongResponse>(&mut conn) 
     {
         Ok(list) => HttpResponse::Ok().json(list),
         Err(_) => HttpResponse::InternalServerError().finish(),
