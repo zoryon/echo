@@ -1,22 +1,25 @@
 use actix_web::web::ReqData;
 use actix_web::{web, HttpResponse, Responder, ResponseError};
 use diesel::prelude::*;
+use diesel::sql_types::Text;
 use uuid::Uuid;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 
 use crate::db::DbPool;
 use crate::db::get_conn;
+use crate::models::pagination_models::Pagination;
 use crate::models::playlist_models::{NewPlaylist, NewPlaylistSong, AddSongRequest};
 use crate::models::playlist_models::Playlist;
-use crate::models::song_models::{Song, SongResponse};
+use crate::models::song_models::{SongResponse};
 use crate::models::token_models::Claims;
-use crate::schema::{playlists::dsl as playlists_dsl, playlist_songs::dsl as ps_dsl, songs::dsl as songs_dsl};
+use crate::schema::{playlists::dsl as playlists_dsl, playlist_songs::dsl as ps_dsl};
 use crate::utils::auth_utils::check_ownership;
 
 // --------------------- Playlists ---------------------
 pub async fn list_playlists(
     pool: web::Data<DbPool>,
     user_id_param: web::Path<String>,
+    query: web::Query<Pagination>,
     claims: ReqData<Claims>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
@@ -30,8 +33,12 @@ pub async fn list_playlists(
         Err(resp) => return resp,
     };
 
+    let pagination = query.into_inner();
+
     let result = playlists_dsl::playlists
         .filter(playlists_dsl::user_id.eq(user_id))
+        .limit(pagination.limit())
+        .offset(pagination.offset())
         .load::<Playlist>(&mut conn);
 
     match result {
@@ -176,6 +183,7 @@ pub async fn delete_playlist(
 pub async fn list_playlist_songs(
     pool: web::Data<DbPool>,
     path: web::Path<(String, String)>,
+    query: web::Query<Pagination>,
     claims: ReqData<Claims>,
 ) -> impl Responder {
     let ( user_id_param, playlist_id_param ) = path.into_inner();
@@ -204,27 +212,36 @@ pub async fn list_playlist_songs(
         return HttpResponse::NotFound().body("Playlist not found");
     }
 
-    let result = ps_dsl::playlist_songs
-        .inner_join(songs_dsl::songs.on(ps_dsl::song_id.eq(songs_dsl::id)))
-        .filter(ps_dsl::playlist_id.eq(playlist_id_param))
-        .select((
-            songs_dsl::id,
-            songs_dsl::title,
-            songs_dsl::artist_id,
-            songs_dsl::album_id,
-            songs_dsl::genre,
-            songs_dsl::duration_seconds,
-            songs_dsl::created_at,
-            songs_dsl::updated_at,
-            songs_dsl::sftp_path,
-        ))
-        .load::<Song>(&mut conn);
+    let pagination = query.into_inner();
 
-    match result {
-        Ok(list) => {
-            let items: Vec<SongResponse> = list.into_iter().map(SongResponse::from).collect();
-            HttpResponse::Ok().json(items)
-        }
+    let sql = format!(r#"
+        SELECT 
+            s.id,
+            s.title,
+            s.artist_id,
+            a.name AS artist_name,
+            s.album_id,
+            al.name AS album_name,
+            s.genre_id,
+            g.name AS genre_name,
+            s.duration_seconds,
+            s.sftp_path,
+            s.created_at,
+            s.updated_at
+        FROM playlist_songs ps
+        JOIN songs s ON ps.song_id = s.id
+        JOIN artists a ON s.artist_id = a.id
+        LEFT JOIN albums al ON s.album_id = al.id
+        LEFT JOIN genres g ON s.genre_id = g.id
+        WHERE ps.playlist_id = $1
+        {}
+    "#, pagination.sql_clause());
+
+    match diesel::sql_query(sql)
+        .bind::<Text, _>(&playlist_id_param)
+        .load::<SongResponse>(&mut conn)
+    {
+        Ok(list) => HttpResponse::Ok().json(list),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }

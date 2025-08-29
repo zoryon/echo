@@ -3,13 +3,7 @@ Streaming quality must be comparable to Spotify High.
 Normalize volume on playback start so all songs have a consistent baseline loudness.
 Device-side player manages final output adjustments.
 
-2. Genres
-Genres must be predefined and static (via SQL table genres or ENUM).
-Clients can only select from this list.
-songs.genre must be validated against genres.
-
 3. Albums
-Albums must be their own SQL table with APIs.
 Endpoints
 GET    /api/albums                     # List all albums
 POST   /api/albums                     # Create a new album (admin only)
@@ -35,12 +29,6 @@ GET /api/users/{user_id}/playlists?name=...
 6. Latest Releases
 Retrieve songs sorted by release date:
 GET /api/songs?sort=release_date&order=desc
-
-7. Song Naming Rules
-Unique per artist:
-An artist cannot publish two songs with the same title.
-Allowed across artists:
-Different artists can have songs with the same name.
 
 8. Batch Uploads
 Allow multiple songs to be uploaded in a single request.

@@ -37,6 +37,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    genres (id) {
+        id -> Integer,
+        #[max_length = 100]
+        name -> Varchar,
+    }
+}
+
+diesel::table! {
     playlist_songs (playlist_id, song_id) {
         #[max_length = 36]
         playlist_id -> Char,
@@ -85,13 +93,12 @@ diesel::table! {
         artist_id -> Char,
         #[max_length = 36]
         album_id -> Nullable<Char>,
-        #[max_length = 50]
-        genre -> Nullable<Varchar>,
+        genre_id -> Nullable<Integer>,
         duration_seconds -> Integer,
-        created_at -> Nullable<Timestamp>,
-        updated_at -> Nullable<Timestamp>,
         #[max_length = 255]
         sftp_path -> Varchar,
+        created_at -> Nullable<Timestamp>,
+        updated_at -> Nullable<Timestamp>,
     }
 }
 
@@ -103,9 +110,9 @@ diesel::table! {
         username -> Varchar,
         password_hash -> Text,
         avatar_url -> Nullable<Text>,
+        is_admin -> Bool,
         created_at -> Nullable<Timestamp>,
         updated_at -> Nullable<Timestamp>,
-        is_admin -> Bool,
     }
 }
 
@@ -118,11 +125,13 @@ diesel::joinable!(playlists -> users (user_id));
 diesel::joinable!(sessions -> users (user_id));
 diesel::joinable!(songs -> albums (album_id));
 diesel::joinable!(songs -> artists (artist_id));
+diesel::joinable!(songs -> genres (genre_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     albums,
     artists,
     favorites,
+    genres,
     playlist_songs,
     playlists,
     sessions,

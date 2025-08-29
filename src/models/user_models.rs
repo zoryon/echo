@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use diesel::{prelude::Queryable, AsChangeset, Selectable, Insertable};
+use diesel::{mysql::Mysql, prelude::Queryable, AsChangeset, Insertable, Selectable};
 
 #[derive(AsChangeset, Deserialize)]
 #[diesel(table_name = crate::schema::users)]
@@ -19,9 +19,9 @@ pub struct User {
     pub username: String,
     pub password_hash: String,
     pub avatar_url: Option<String>,
+    pub is_admin: bool,
     pub created_at: Option<chrono::NaiveDateTime>,
     pub updated_at: Option<chrono::NaiveDateTime>,
-    pub is_admin: bool,
 }
 
 #[derive(Serialize)]
@@ -56,6 +56,8 @@ pub struct NewUser {
 #[allow(dead_code)]
 #[derive(Queryable, Clone, Selectable)]
 #[diesel(table_name = crate::schema::users)]
+// Add this line below
+#[diesel(check_for_backend(Mysql))] 
 pub struct PublicUser {
     pub id: String,
     pub username: String,

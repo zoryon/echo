@@ -4,29 +4,52 @@ use std::io::Write;
 use actix_web::{web, HttpResponse, Responder, ResponseError};
 use actix_multipart::Multipart;
 use diesel::prelude::*;
+use diesel::sql_types::Text;
 use futures::StreamExt;
 use futures::TryStreamExt;
 use uuid::Uuid;
 
 use crate::db::DbPool;
 use crate::db::get_conn;
+use crate::models::pagination_models::Pagination;
 use crate::models::song_models::{Song, SongResponse, NewSong, UpdateSong};
 use crate::schema::songs::dsl::*;
 use crate::utils::file_utils::{upload_file_sftp, delete_file_sftp, stream_song_sftp};
 
-pub async fn list_songs(pool: web::Data<DbPool>) -> impl Responder {
+pub async fn list_songs(
+    pool: web::Data<DbPool>,
+    query: web::Query<Pagination>,
+) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
         Err(e) => return e.error_response(),
     };
 
-    let result = songs.load::<Song>(&mut conn);
+    let pagination = query.into_inner();
 
-    match result {
-        Ok(song_list) => {
-            let items: Vec<SongResponse> = song_list.into_iter().map(SongResponse::from).collect();
-            HttpResponse::Ok().json(items)
-        }
+    let sql = format!(r#"
+        SELECT
+            s.id,
+            s.title,
+            s.artist_id,
+            a.name AS artist_name,
+            s.album_id,
+            al.name AS album_name,
+            s.genre_id,
+            g.name AS genre_name,
+            s.duration_seconds,
+            s.sftp_path,
+            s.created_at,
+            s.updated_at
+        FROM songs s
+        JOIN artists a ON s.artist_id = a.id
+        LEFT JOIN albums al ON s.album_id = al.id
+        LEFT JOIN genres g ON s.genre_id = g.id
+        {}
+    "#, pagination.sql_clause());
+
+    match diesel::sql_query(sql).load::<SongResponse>(&mut conn) {
+        Ok(list) => HttpResponse::Ok().json(list),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
@@ -40,15 +63,41 @@ pub async fn get_song(
         Err(e) => return e.error_response(),
     };
 
-    let song_id_param = song_id_param.into_inner();
+    let song_id: String = song_id_param.into_inner();
 
-    let result = songs
-        .filter(id.eq(song_id_param))
-        .first::<Song>(&mut conn);
+    let sql = r#"
+        SELECT
+            s.id,
+            s.title,
+            s.artist_id,
+            a.name AS artist_name,
+            s.album_id,
+            al.name AS album_name,
+            s.genre_id,
+            g.name AS genre_name,
+            s.duration_seconds,
+            s.sftp_path,
+            s.created_at,
+            s.updated_at
+        FROM songs s
+        JOIN artists a ON s.artist_id = a.id
+        LEFT JOIN albums al ON s.album_id = al.id
+        LEFT JOIN genres g ON s.genre_id = g.id
+        WHERE s.id = $1
+    "#;
 
-    match result {
-        Ok(song) => HttpResponse::Ok().json(SongResponse::from(song)),
-        Err(_) => HttpResponse::NotFound().finish(),
+    match diesel::sql_query(sql)
+        .bind::<Text, _>(song_id)
+        .load::<SongResponse>(&mut conn)
+    {
+        Ok(mut list) => {
+            if let Some(song) = list.pop() {
+                HttpResponse::Ok().json(song)
+            } else {
+                HttpResponse::NotFound().finish()
+            }
+        }
+        Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
 

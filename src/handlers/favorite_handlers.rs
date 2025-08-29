@@ -2,19 +2,21 @@ use actix_web::{web, HttpResponse, Responder, ResponseError};
 use actix_web::web::ReqData;
 use diesel::prelude::*;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
+use diesel::sql_types::Text;
 
 use crate::db::DbPool;
 use crate::db::get_conn;
 use crate::models::favorite_models::{NewFavorite, AddFavoriteRequest};
+use crate::models::pagination_models::Pagination;
 use crate::models::token_models::Claims;
 use crate::schema::favorites::dsl as fav_dsl;
-use crate::models::song_models::{Song, SongResponse};
-use crate::schema::songs::dsl as songs_dsl;
+use crate::models::song_models::{SongResponse};
 use crate::utils::auth_utils::check_ownership;
 
 pub async fn list_favorites(
     pool: web::Data<DbPool>,
     user_id_param: web::Path<String>,
+    query: web::Query<Pagination>,
     claims: ReqData<Claims>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
@@ -28,27 +30,36 @@ pub async fn list_favorites(
         Err(resp) => return resp,
     };
 
-    let result = fav_dsl::favorites
-        .inner_join(songs_dsl::songs.on(fav_dsl::song_id.eq(songs_dsl::id)))
-        .filter(fav_dsl::user_id.eq(user_id))
-        .select((
-            songs_dsl::id,
-            songs_dsl::title,
-            songs_dsl::artist_id,
-            songs_dsl::album_id,
-            songs_dsl::genre,
-            songs_dsl::duration_seconds,
-            songs_dsl::created_at,
-            songs_dsl::updated_at,
-            songs_dsl::sftp_path,
-        ))
-        .load::<Song>(&mut conn);
+    let pagination = query.into_inner();
 
-    match result {
-        Ok(list) => {
-            let items: Vec<SongResponse> = list.into_iter().map(SongResponse::from).collect();
-            HttpResponse::Ok().json(items)
-        }
+    let sql = format!(r#"
+        SELECT 
+            s.id,
+            s.title,
+            s.artist_id,
+            a.name AS artist_name,
+            s.album_id,
+            al.name AS album_name,
+            s.genre_id,
+            g.name AS genre_name,
+            s.duration_seconds,
+            s.sftp_path,
+            s.created_at,
+            s.updated_at
+        FROM favorites f
+        JOIN songs s ON f.song_id = s.id
+        JOIN artists a ON s.artist_id = a.id
+        LEFT JOIN albums al ON s.album_id = al.id
+        LEFT JOIN genres g ON s.genre_id = g.id
+        WHERE f.user_id = $1
+        {}
+    "#, pagination.sql_clause());
+
+    match diesel::sql_query(sql)
+        .bind::<Text, _>(user_id)
+        .load::<SongResponse>(&mut conn)
+    {
+        Ok(list) => HttpResponse::Ok().json(list),
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
