@@ -126,111 +126,132 @@ pub async fn stream_song(
     }
 }
 
-pub async fn create_song(
+pub async fn create_one_or_more_songs(
     pool: web::Data<DbPool>,
     mut payload: Multipart,
 ) -> impl Responder {
-    let mut new_song: Option<NewSong> = None;
-    let mut file_buffer: Option<Vec<u8>> = None;
+    // Temp storage for each song
+    struct SongData {
+        file: Vec<u8>,
+        metadata: NewSong,
+    }
+    let mut songs_batch: Vec<SongData> = Vec::new();
 
-    // Iterate multipart fields
+    let mut current_file: Option<Vec<u8>> = None;
+    let mut current_meta: Option<NewSong> = None;
+
     while let Ok(Some(mut field)) = payload.try_next().await {
-        let content_disposition = field.content_disposition().unwrap();
-        let name = content_disposition.get_name().unwrap();
+        let name = field.content_disposition().unwrap().get_name().unwrap();
 
         if name == "file" {
             let mut buf = Vec::new();
             while let Some(chunk) = field.next().await {
-                let data = match chunk {
-                    Ok(d) => d,
+                match chunk {
+                    Ok(data) => buf.extend_from_slice(&data),
                     Err(e) => {
                         return HttpResponse::InternalServerError()
-                            .body(format!("Failed to read file chunk: {}", e))
+                            .body(format!("Failed to read file chunk: {}", e));
                     }
-                };
-                buf.extend_from_slice(&data);
+                }
             }
-            file_buffer = Some(buf);
+            current_file = Some(buf);
         } else if name == "metadata" {
             let mut bytes = web::BytesMut::new();
             while let Some(chunk) = field.next().await {
-                let data = match chunk {
-                    Ok(d) => d,
+                match chunk {
+                    Ok(data) => bytes.extend_from_slice(&data),
                     Err(e) => {
                         return HttpResponse::InternalServerError()
-                            .body(format!("Failed to read metadata chunk: {}", e))
+                            .body(format!("Failed to read metadata chunk: {}", e));
                     }
-                };
-                bytes.extend_from_slice(&data);
+                }
             }
-            new_song = match serde_json::from_slice::<NewSong>(&bytes) {
-                Ok(ns) => Some(ns),
-                Err(e) => return HttpResponse::BadRequest().body(format!("Invalid metadata JSON: {}", e)),
-            };
+            let meta_result: Result<NewSong, _> = serde_json::from_slice(&bytes);
+            match meta_result {
+                Ok(meta) => current_meta = Some(meta),
+                Err(e) => {
+                    return HttpResponse::BadRequest()
+                        .body(format!("Invalid metadata JSON: {}", e));
+                }
+            }
+        }
+
+        // First, check if both parts are available without consuming them
+        if current_file.is_some() && current_meta.is_some() {
+            // Now that we know they exist, we can safely take them.
+            // .unwrap() is safe here because we just checked with is_some().
+            let file = current_file.take().unwrap();
+            let meta = current_meta.take().unwrap();
+            
+            songs_batch.push(SongData { file, metadata: meta });
         }
     }
 
-    if new_song.is_none() || file_buffer.is_none() {
-        return HttpResponse::BadRequest().body("Missing file or metadata");
+    if songs_batch.is_empty() || songs_batch.len() > 10 {
+        return HttpResponse::BadRequest()
+            .body("You must upload between 1 and 10 songs per request");
     }
 
-    let mut new_song: NewSong = new_song.unwrap();
-    new_song.id = Uuid::new_v4().to_string();
-
-    // Normalize
-    let buffer: Vec<u8> = file_buffer.unwrap();
-    let normalized_file: Vec<u8> = match normalize_song_async(&buffer).await {
-        Ok(res) => res,
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Audio normalization error: {}", e))
-        }
-    };
-
-    // Upload to Object Storage
     let write_base: String = std::env::var("OBJECT_STORAGE_WRITE_BASE_URL")
         .expect("OBJECT_STORAGE_WRITE_BASE_URL not set");
     let read_base: String = std::env::var("OBJECT_STORAGE_READ_BASE_URL")
         .expect("OBJECT_STORAGE_READ_BASE_URL not set");
 
-    let object_name: String = format!("{}.mp3", new_song.id);
-    let upload_url: String = format!("{}/{}", write_base, object_name);
-
-    let client = reqwest::Client::new();
-    let res = client
-        .put(&upload_url)
-        .header("Content-Type", "audio/mpeg")
-        .body(normalized_file)
-        .send()
-        .await;
-
-    if res.is_err() || !res.as_ref().unwrap().status().is_success() {
-        return HttpResponse::InternalServerError().body("Failed to upload to Object Storage");
-    }
-
-    // Save the READ PAR for future playback 
-    let read_url = format!("{}/{}", read_base, object_name);
-    new_song.object_url = read_url;
-
-    // Insert into DB
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
         Err(e) => return e.error_response(),
     };
 
-    let inserted = diesel::insert_into(songs)
-        .values(&new_song)
-        .execute(&mut conn);
+    // Process each song sequentially (or in parallel with join_all)
+    // Return inserted IDs (Vec<String>) which are serializable by serde
+    let mut results: Vec<String> = Vec::new();
+    for mut song in songs_batch {
+        song.metadata.id = Uuid::new_v4().to_string();
 
-    match inserted {
-        Ok(_) => {
-            match songs.filter(id.eq(new_song.id.clone())).first::<Song>(&mut conn) {
-                Ok(created) => HttpResponse::Created().json(SongResponse::from(created)),
-                Err(_) => HttpResponse::Created().finish(),
+        // Normalize
+        let normalized_file = match normalize_song_async(&song.file).await {
+            Ok(f) => f,
+            Err(e) => {
+                return HttpResponse::InternalServerError().body(format!("Audio normalization error: {}", e));
             }
+        };
+
+        // Upload
+        let object_name = format!("{}.mp3", song.metadata.id);
+        let upload_url = format!("{}/{}", write_base, object_name);
+        let client = reqwest::Client::new();
+        let res = match client
+            .put(&upload_url)
+            .header("Content-Type", "audio/mpeg")
+            .body(normalized_file)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(_) => {
+                return HttpResponse::InternalServerError().body("Failed to upload");
+            }
+        };
+
+        if !res.status().is_success() {
+            return HttpResponse::InternalServerError().body("Failed to upload to Object Storage");
         }
-        Err(_) => HttpResponse::InternalServerError().finish(),
+
+        song.metadata.object_url = format!("{}/{}", read_base, object_name);
+
+        // Insert DB
+        if let Err(_) = diesel::insert_into(songs)
+            .values(&song.metadata)
+            .execute(&mut conn)
+        {
+            return HttpResponse::InternalServerError().finish();
+        }
+
+        // Collect result as the new song ID
+        results.push(song.metadata.id.clone());
     }
+
+    HttpResponse::Created().json(results)
 }
 
 pub async fn update_song(

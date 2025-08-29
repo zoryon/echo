@@ -1,8 +1,3 @@
-1. Audio Quality & Volume Normalization
-Streaming quality must be comparable to Spotify High.
-Normalize volume on playback start so all songs have a consistent baseline loudness.
-Device-side player manages final output adjustments.
-
 3. Albums
 Endpoints
 GET    /api/albums                     # List all albums
@@ -29,13 +24,6 @@ GET /api/users/{user_id}/playlists?name=...
 6. Latest Releases
 Retrieve songs sorted by release date:
 GET /api/songs?sort=release_date&order=desc
-
-8. Batch Uploads
-Allow multiple songs to be uploaded in a single request.
-Metadata must be sent for each song.
-Suggested Endpoint
-POST /api/songs
-with array of paths of file on the device 
 
 9. Random Discovery
 Add support for random song discovery.

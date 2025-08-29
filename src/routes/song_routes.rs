@@ -1,14 +1,14 @@
 use actix_web::web;
 
 use crate::handlers::song_handlers::{
-    list_songs, get_song, create_song, update_song, delete_song, stream_song
+    list_songs, get_song, create_one_or_more_songs, update_song, delete_song, stream_song
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/songs")
             .route("", web::get().to(list_songs))
-            .route("", web::post().to(create_song))
+            .route("", web::post().to(create_one_or_more_songs))
             .route("/{song_id}", web::get().to(get_song))
             .route("/{song_id}", web::put().to(update_song))
             .route("/{song_id}", web::delete().to(delete_song))
