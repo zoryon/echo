@@ -40,7 +40,8 @@ pub struct UpdateSong {
     pub duration_seconds: Option<i32>,
 }
 
-#[derive(QueryableByName, Serialize)]
+
+#[derive(Clone, QueryableByName, Serialize)]
 pub struct SongResponse {
     #[diesel(sql_type = Text)]
     pub id: String,

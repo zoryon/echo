@@ -1,10 +1,11 @@
 use diesel::prelude::{AsChangeset, Insertable, Queryable};
 use serde::{Serialize, Deserialize};
+use diesel::Selectable;
 
 use crate::schema::genres;
 
 #[allow(dead_code)]
-#[derive(Queryable, Serialize, Debug)]
+#[derive(Queryable, Serialize, Debug, Selectable)]
 pub struct Genre {
     pub id: i32,
     pub name: String,

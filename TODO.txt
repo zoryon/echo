@@ -1,33 +1,17 @@
-3. Albums
-Endpoints
-GET    /api/albums                     # List all albums
-POST   /api/albums                     # Create a new album (admin only)
-GET    /api/albums/{album_id}          # Get album details
-PUT    /api/albums/{album_id}          # Update album (admin only)
-DELETE /api/albums/{album_id}          # Delete album (admin only)
-GET    /api/albums/{album_id}/songs    # Get songs belonging to an album
-
-4. Song Filtering
-
+3. Song Filtering
 Filter songs by:
 Name → GET /api/songs?name=...
 Genre → GET /api/songs?genre=...
 Artist → GET /api/songs?artist=...
+Release → GET /api/songs?sort=release_date&order=desc
 
-(New Endpoint Needed)
-GET    /api/artists/{artist_id}/songs   # List all songs by a specific artist
+4. Random Discovery
+Add support for random song discovery.
+GET /api/songs?random=true&limit=10
 
 5. Playlist Filtering
 Filter user playlists by name:
 GET /api/users/{user_id}/playlists?name=...
-
-6. Latest Releases
-Retrieve songs sorted by release date:
-GET /api/songs?sort=release_date&order=desc
-
-9. Random Discovery
-Add support for random song discovery.
-GET /api/songs?random=true&limit=10
 
 13. Next Step
 ➡️ Review GitHub issues list and check which of these are already covered / partially done.

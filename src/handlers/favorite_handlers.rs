@@ -31,7 +31,7 @@ pub async fn list_favorites(
         Err(resp) => return resp,
     };
 
-    let pagination = query.into_inner();
+    let pagination: Pagination = query.into_inner();
     match validate_pagination(&pagination) {
         Ok(v) => v,
         Err(e) => return e.error_response(),
