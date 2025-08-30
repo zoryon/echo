@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::db::DbPool;
 use crate::db::get_conn;
 use crate::models::pagination_models::Pagination;
+use crate::models::song_models::SongQuery;
 use crate::models::song_models::{Song, SongResponse, NewSong, UpdateSong};
 use crate::schema::songs::dsl::*;
 use crate::utils::audio_utils::normalize_song_async;
@@ -16,20 +17,62 @@ use crate::utils::pagination_utils::validate_pagination;
 
 pub async fn list_songs(
     pool: web::Data<DbPool>,
-    query: web::Query<Pagination>,
+    query: web::Query<SongQuery>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
         Ok(c) => c,
         Err(e) => return e.error_response(),
     };
 
-    let pagination = query.into_inner();
+    // Build WHERE clause
+    let mut filters = Vec::new();
+
+    if let Some(ref name) = query.name {
+        filters.push(format!("LOWER(s.title) LIKE LOWER('%{}%')", name.replace("'", "''")));
+    }
+    if let Some(ref genre) = query.genre {
+        filters.push(format!("LOWER(g.name) LIKE LOWER('%{}%')", genre.replace("'", "''")));
+    }
+    if let Some(ref artist) = query.artist {
+        filters.push(format!("LOWER(a.name) LIKE LOWER('%{}%')", artist.replace("'", "''")));
+    }   
+
+    let where_clause = if filters.is_empty() {
+        "".to_string()
+    } else {
+        format!("WHERE {}", filters.join(" AND "))
+    };
+
+    // Sorting or Random
+    let mut order_clause = String::new();
+    if query.random.unwrap_or(false) {
+        order_clause = "ORDER BY RAND()".to_string(); 
+    } else if let Some(ref sort) = query.sort {
+        let (field, direction) = if sort.starts_with('-') {
+            (&sort[1..], "DESC")
+        } else {
+            (sort.as_str(), "ASC")
+        };
+
+        match field {
+            "release_date" => order_clause = format!("ORDER BY s.created_at {}", direction),
+            "name" => order_clause = format!("ORDER BY s.title {}", direction),
+            "artist" => order_clause = format!("ORDER BY a.name {}", direction),
+            _ => {}
+        }
+    }
+
+    let pagination = Pagination {
+        limit: query.limit,
+        offset: query.offset,
+    };
     match validate_pagination(&pagination) {
-        Ok(v) => v,
+        Ok(_) => {}
         Err(e) => return e.error_response(),
     };
 
-    let sql = format!(r#"
+    let sql = format!(
+        r#"
         SELECT
             s.id,
             s.title,
@@ -47,8 +90,14 @@ pub async fn list_songs(
         JOIN artists a ON s.artist_id = a.id
         LEFT JOIN albums al ON s.album_id = al.id
         LEFT JOIN genres g ON s.genre_id = g.id
-        {}
-    "#, pagination.sql_clause().unwrap());
+        {where_clause}
+        {order_clause}
+        {pagination_clause}
+        "#,
+        where_clause = where_clause,
+        order_clause = order_clause,
+        pagination_clause = pagination.sql_clause().unwrap()
+    );
 
     match diesel::sql_query(sql).load::<SongResponse>(&mut conn) {
         Ok(list) => HttpResponse::Ok().json(list),

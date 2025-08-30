@@ -1,7 +1,18 @@
 use diesel::{prelude::QueryableByName, AsChangeset, Insertable, Queryable};
 use chrono::NaiveDateTime;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use diesel::sql_types::{Text, Integer, Nullable, Timestamp};
+
+#[derive(Deserialize)]
+pub struct SongQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub name: Option<String>,
+    pub genre: Option<String>,
+    pub artist: Option<String>,
+    pub sort: Option<String>, // e.g. "release_date" or "-release_date"
+    pub random: Option<bool>,
+}
 
 #[derive(Queryable, Debug, serde::Serialize)]
 pub struct Song {

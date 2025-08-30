@@ -17,6 +17,11 @@ PUT    /api/songs/{song_id}                                                 # Up
 DELETE /api/songs/{song_id}                                                 # Delete a song from the DB
 GET    /api/songs/{song_id}/stream                                          # Stream a specific song
 
+GET /api/songs?name={name}                                                  # Get songs by name
+GET /api/songs?sort={sort}                                                  # Get songs with sorting of a column or by release date
+GET /api/songs?artist={artist}&genre={genre}&sort={-sort}                   # Get songs by artist, genre and sorted
+GET /api/songs?genre={genre}&random={random}&limit={limit}                  # Get songs by gerne, in a random order and with a limit
+
 
 # # # PLAYLISTS & FAVORITES # # #
 

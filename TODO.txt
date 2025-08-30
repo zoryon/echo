@@ -1,14 +1,3 @@
-3. Song Filtering
-Filter songs by:
-Name → GET /api/songs?name=...
-Genre → GET /api/songs?genre=...
-Artist → GET /api/songs?artist=...
-Release → GET /api/songs?sort=release_date&order=desc
-
-4. Random Discovery
-Add support for random song discovery.
-GET /api/songs?random=true&limit=10
-
 5. Playlist Filtering
 Filter user playlists by name:
 GET /api/users/{user_id}/playlists?name=...
