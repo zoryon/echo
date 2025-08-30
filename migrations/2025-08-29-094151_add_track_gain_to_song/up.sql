@@ -1,1 +1,0 @@
-ALTER TABLE songs ADD COLUMN track_gain FLOAT DEFAULT 0;
