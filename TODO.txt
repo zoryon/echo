@@ -1,6 +1,0 @@
-5. Playlist Filtering
-Filter user playlists by name:
-GET /api/users/{user_id}/playlists?name=...
-
-13. Next Step
-➡️ Review GitHub issues list and check which of these are already covered / partially done.
