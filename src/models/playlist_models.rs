@@ -4,6 +4,13 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // --------------------- Playlist Models ---------------------
+#[derive(Deserialize)]
+pub struct PlaylistQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub name: Option<String>, 
+}
+
 #[derive(Queryable, Identifiable, Associations, Serialize)]
 #[diesel(table_name = crate::schema::playlists)]
 #[diesel(belongs_to(crate::models::user_models::UserResponse, foreign_key = user_id))]

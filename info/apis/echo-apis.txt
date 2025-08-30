@@ -34,6 +34,8 @@ DELETE /api/users/{user_id}/favorites/songs/{song_id}                       # Re
 GET    /api/users/{user_id}/playlists                                       # Get all playlists for a user
 POST   /api/users/{user_id}/playlists                                       # Create a new playlist for a user
 
+GET /api/users/{user_id}/playlists?name=rock                                # Get all playlists of a user by name
+
 GET    /api/users/{user_id}/playlists/{playlist_id}                         # Get a single playlist's metadata
 PUT    /api/users/{user_id}/playlists/{playlist_id}                         # Update a playlist's metadata (e.g., name)
 DELETE /api/users/{user_id}/playlists/{playlist_id}                         # Delete a single playlist

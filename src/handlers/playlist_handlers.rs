@@ -9,7 +9,7 @@ use crate::db::DbPool;
 use crate::db::get_conn;
 use crate::models::pagination_models::Pagination;
 use crate::models::playlist_models::{NewPlaylist, NewPlaylistSong, AddSongRequest};
-use crate::models::playlist_models::Playlist;
+use crate::models::playlist_models::{Playlist, PlaylistQuery};
 use crate::models::song_models::{SongResponse};
 use crate::models::token_models::Claims;
 use crate::schema::{playlists::dsl as playlists_dsl, playlist_songs::dsl as ps_dsl};
@@ -20,7 +20,7 @@ use crate::utils::pagination_utils::validate_pagination;
 pub async fn list_playlists(
     pool: web::Data<DbPool>,
     user_id_param: web::Path<String>,
-    query: web::Query<Pagination>,
+    query: web::Query<PlaylistQuery>,
     claims: ReqData<Claims>,
 ) -> impl Responder {
     let mut conn = match get_conn(&pool) {
@@ -30,32 +30,36 @@ pub async fn list_playlists(
 
     let user_id: String = user_id_param.into_inner();
     let logged_in_user_id: &String = &claims.sub;
-
     let is_owner: bool = logged_in_user_id == &user_id;
 
-    let pagination = query.into_inner();
+    // Pagination
+    let pagination = Pagination {
+        limit: query.limit,
+        offset: query.offset,
+    };
     let (limit, offset) = match validate_pagination(&pagination) {
         Ok(v) => v,
         Err(e) => return e.error_response(),
     };
 
-    // Build the query conditionally.
-    // We start by filtering on the user ID and boxing the query.
-    let mut query = playlists_dsl::playlists
+    // Base query: playlists of this user
+    let mut q = playlists_dsl::playlists
         .filter(playlists_dsl::user_id.eq(&user_id))
         .into_boxed();
 
-    // 4. If the requester is NOT the owner, add another filter for public playlists.
+    // Only public if not owner
     if !is_owner {
-        // Assuming your schema has a boolean column named `is_public`
-        query = query.filter(playlists_dsl::is_public.eq(true));
+        q = q.filter(playlists_dsl::is_public.eq(true));
     }
 
-    // Now, apply pagination and execute the final query.
-    let result = query
-        .limit(limit)
-        .offset(offset)
-        .load::<Playlist>(&mut conn);
+    // Optional filtering by name
+    if let Some(ref name) = query.name {
+        let like_pattern = format!("%{}%", name);
+        q = q.filter(playlists_dsl::name.like(like_pattern));
+    }
+
+    // Pagination + exec
+    let result = q.limit(limit).offset(offset).load::<Playlist>(&mut conn);
 
     match result {
         Ok(list) => HttpResponse::Ok().json(list),
