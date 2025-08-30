@@ -1,0 +1,27 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+    command: ["cargo", "watch", "-x", "run"]
+    stdin_open: true
+    tty: true
+
+  prod:
+    image: echo-server:prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    command: ["/app/echo"]
