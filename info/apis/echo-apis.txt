@@ -1,0 +1,46 @@
+# # # USERS # # #
+POST   /api/users                                                           # Create a new user (admin only)
+PATCH  /api/users/{user_id}                                                 # Partially update a user's profile
+
+
+# # # SESSIONS (Authentication) # # #
+POST   /api/sessions                                                        # Log in (create a session)
+GET    /api/sessions/current                                                # Get current session info (check auth)
+DELETE /api/sessions/current                                                # Log out (delete the current session)
+
+
+# # # SONGS # # #
+GET    /api/songs                                                           # Get a list of all songs
+POST   /api/songs                                                           # Add a new song to the DB
+GET    /api/songs/{song_id}                                                 # Get a specific song's metadata
+PUT    /api/songs/{song_id}                                                 # Update a song's metadata
+DELETE /api/songs/{song_id}                                                 # Delete a song from the DB
+GET    /api/songs/{song_id}/stream                                          # Stream a specific song
+
+GET /api/songs?name={name}                                                  # Get songs by name
+GET /api/songs?sort={sort}                                                  # Get songs with sorting of a column or by release date
+GET /api/songs?artist={artist}&genre={genre}&sort={-sort}                   # Get songs by artist, genre and sorted
+GET /api/songs?genre={genre}&random={random}&limit={limit}                  # Get songs by gerne, in a random order and with a limit
+
+
+# # # PLAYLISTS & FAVORITES # # #
+
+# -- User's Favorites (Special Playlist) --
+GET    /api/users/{user_id}/favorites/songs                                 # Get all favorite songs for a user
+POST   /api/users/{user_id}/favorites/songs                                 # Add a song to favorites (body: {"song_id": "..."})
+DELETE /api/users/{user_id}/favorites/songs/{song_id}                       # Remove a song from favorites
+
+# -- User's Regular Playlists --
+GET    /api/users/{user_id}/playlists                                       # Get all playlists for a user
+POST   /api/users/{user_id}/playlists                                       # Create a new playlist for a user
+
+GET /api/users/{user_id}/playlists?name=rock                                # Get all playlists of a user by name
+
+GET    /api/users/{user_id}/playlists/{playlist_id}                         # Get a single playlist's metadata
+PUT    /api/users/{user_id}/playlists/{playlist_id}                         # Update a playlist's metadata (e.g., name)
+DELETE /api/users/{user_id}/playlists/{playlist_id}                         # Delete a single playlist
+
+# -- Songs within a User's Playlist --
+GET    /api/users/{user_id}/playlists/{playlist_id}/songs                   # Get all songs in a specific playlist
+POST   /api/users/{user_id}/playlists/{playlist_id}/songs                   # Add a song to a specific playlist (body: {"song_id": "..."})
+DELETE /api/users/{user_id}/playlists/{playlist_id}/songs/{song_id}         # Remove a specific song from a playlist
