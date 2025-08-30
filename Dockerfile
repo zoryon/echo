@@ -1,7 +1,7 @@
 # ==========================
 # --- Builder Stage ---
 # ==========================
-FROM rust:1.89.0 AS builder
+FROM rust:1.89.0-bookworm AS builder
 
 # Set working directory
 WORKDIR /app
@@ -33,7 +33,12 @@ FROM debian:bookworm-slim AS prod
 WORKDIR /app
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y libpq5 ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libpq5 \
+        libmariadb3 \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy the built binary from builder
 COPY --from=builder /app/target/release/echo /app/echo
